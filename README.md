@@ -12,3 +12,4 @@ My laptop keyboard as a digital music instrument.
 - https://www.hooktheory.com/theorytab
 - https://book-one.hooktheory.com/section/chords
 - https://github.com/wlouie1/MusicPlot
+- https://github.com/ChungHaLee/musicolors
