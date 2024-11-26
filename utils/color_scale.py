@@ -23,7 +23,7 @@ def lab_to_rgb(l: float, a: float, b: float) -> Tuple[int, int, int]:
 def get_note_colors() -> List[Tuple[str, Tuple[int, int, int]]]:
     """Get RGB colors for 12 notes starting from F4 (based on Chinese Ming Yellow)."""
     # Base Lab values for Ming Yellow
-    l_value = 77.88
+    l_value = 83.32
     base_a = 6.02
     base_b = 74.77
     
@@ -87,14 +87,16 @@ def visualize_color_wheel():
                fontweight='bold', color='black')
     
     # Set limits and remove axes
-    ax.set_xlim(-1.2, 1.2)
-    ax.set_ylim(-1.2, 1.2)
+    ax.set_xlim(-1, 1)
+    ax.set_ylim(-1, 1)
     ax.axis('off')
     
     # Add title
     plt.title('Musical Color Wheel\nStarting from F (Ming Yellow)', 
-             pad=20, fontsize=14, fontweight='bold')
+             pad=20, fontsize=16, fontweight='bold')
     
+    plt.tight_layout()
+    plt.savefig('color_wheel.png', dpi=300, bbox_inches='tight')
     plt.show()
 
 if __name__ == "__main__":
