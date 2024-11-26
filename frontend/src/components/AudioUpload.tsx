@@ -39,6 +39,8 @@ interface ProcessedAudio {
   key: string;
   processed_path: string;
   message: string;
+  pitch?: any;
+  transcription?: any;
 }
 
 interface AudioUploadProps {
@@ -99,7 +101,6 @@ const AudioUploadComponent: React.FC<AudioUploadProps> = ({ onFileSelect, error 
           variant="contained"
           component="span"
           sx={{ mt: 2 }}
-          startIcon={<CloudUploadIcon />}
         >
           Select File
         </Button>
@@ -187,32 +188,26 @@ const AudioUpload: React.FC<AudioUploadProps> = ({ onFileSelect, error }) => {
           <Typography variant="h6" gutterBottom>
             分析结果
           </Typography>
-          <Typography>速度: {Math.round(processedAudio.tempo)} BPM</Typography>
-          <Typography>调性: {processedAudio.key}</Typography>
           
-          {processedAudio.message && (
-            <Alert severity="info" sx={{ mt: 2 }}>
-              {processedAudio.message}
-              <Link 
-                href="https://github.com/Anjok07/ultimatevocalremovergui" 
-                target="_blank" 
-                rel="noopener noreferrer"
-                sx={{ ml: 1 }}
-              >
-                下载 Ultimate Vocal Remover
-              </Link>
-            </Alert>
+          {processedAudio.pitch && (
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="subtitle1" gutterBottom>
+                音高分析
+              </Typography>
+              <pre>{JSON.stringify(processedAudio.pitch, null, 2)}</pre>
+            </Box>
           )}
-          
-          <Box sx={{ mt: 2 }}>
-            <Typography variant="subtitle1" gutterBottom>
-              音频预览:
-            </Typography>
-            <audio 
-              controls 
-              src={`http://localhost:5000/uploads/${processedAudio.processed_path.split('/').pop()}`} 
-            />
-          </Box>
+
+          {processedAudio.transcription && (
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="subtitle1" gutterBottom>
+                转录结果
+              </Typography>
+              <Typography variant="body1">
+                {processedAudio.transcription.text}
+              </Typography>
+            </Box>
+          )}
         </Box>
       )}
     </UploadContainer>

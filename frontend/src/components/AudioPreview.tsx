@@ -8,16 +8,20 @@ import {
 } from '@mui/material';
 import { 
   PlayArrow, 
-  Pause, 
+  Pause,
   VolumeUp, 
   VolumeOff,
 } from '@mui/icons-material';
 
 interface AudioPreviewProps {
   file: File;
+  showVolumeControl?: boolean;
 }
 
-const AudioPreview: React.FC<AudioPreviewProps> = ({ file }) => {
+const AudioPreview: React.FC<AudioPreviewProps> = ({ 
+  file,
+  showVolumeControl = false,
+}) => {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -133,19 +137,21 @@ const AudioPreview: React.FC<AudioPreviewProps> = ({ file }) => {
           </Box>
         </Box>
 
-        <Box sx={{ display: 'flex', alignItems: 'center', minWidth: 100 }}>
-          <IconButton onClick={toggleMute} size="small">
-            {isMuted ? <VolumeOff /> : <VolumeUp />}
-          </IconButton>
-          <Slider
-            value={isMuted ? 0 : volume}
-            onChange={handleVolumeChange}
-            min={0}
-            max={1}
-            step={0.01}
-            sx={{ ml: 1 }}
-          />
-        </Box>
+        {showVolumeControl && (
+          <Box sx={{ display: 'flex', alignItems: 'center', minWidth: 100 }}>
+            <IconButton onClick={toggleMute} size="small">
+              {isMuted ? <VolumeOff /> : <VolumeUp />}
+            </IconButton>
+            <Slider
+              value={isMuted ? 0 : volume}
+              onChange={handleVolumeChange}
+              min={0}
+              max={1}
+              step={0.01}
+              sx={{ ml: 1 }}
+            />
+          </Box>
+        )}
       </Box>
     </Paper>
   );
