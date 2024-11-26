@@ -17,7 +17,7 @@ interface AnalysisResults {
     times: number[];
     plot: string;
   };
-  transcription?: {
+  transcribe?: {
     text: string;
     segments: Array<{
       start: number;
@@ -81,7 +81,6 @@ const MusicAnalysis: React.FC = () => {
         ...prev,
         [type]: data,
       }));
-      console.log(results);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
@@ -129,19 +128,19 @@ const MusicAnalysis: React.FC = () => {
           </Paper>
         )}
 
-        {results.transcription && (
+        {results.transcribe && (
           <Paper sx={{ p: 3, mb: 3 }}>
             <Typography variant="h6" gutterBottom>
               Transcription
             </Typography>
             <Typography variant="body1">
-              {results.transcription.text}
+              {results.transcribe.text}
             </Typography>
             <Divider sx={{ my: 2 }} />
             <Typography variant="subtitle2" gutterBottom>
               Segments:
             </Typography>
-            {results.transcription.segments.map((segment, index) => (
+            {results.transcribe.segments.map((segment, index) => (
               <Box key={index} sx={{ mb: 1 }}>
                 <Typography variant="body2" color="text.secondary">
                   [{segment.start.toFixed(2)}s - {segment.end.toFixed(2)}s]

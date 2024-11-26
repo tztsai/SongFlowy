@@ -10,3 +10,32 @@
 
 - https://zh.wikipedia.org/wiki/%E9%A1%BE%E6%AF%93%E7%90%87#%E9%9F%B3%E6%A8%82%E5%AE%B6
 - https://www.dpm.org.cn/Uploads/File/2022/05/31/u6295924e1af45.pdf
+
+## UI layout
+
+| Music Tab | Chord Progression | Lyrics Editor |
+|------------|------------------|---------------|
+| G\|--------------------------\|<br>F\|--------------------------\|<br>E\|--------------------------\|<br>D\|--------------------------\|<br>C\|--------------------------\|<br>B\|--------------------------\|<br>A\|--------------------------\| | Am → C → G → F | When the night has come<br>And the land is dark<br>And the moon is the only<br>Light we'll see |
+
+### Implementation Notes
+- Tab section should auto-scroll like Guitar Hero/Rock Band
+- Highlight current line in sync with audio
+- Color-code chords based on function (tonic, dominant, etc.)
+- Allow real-time lyrics editing with timestamp markers
+- Show current position indicator (vertical line moving across)
+- Support multiple instrument tabs (Guitar, Bass, Piano)
+
+### Visual Enhancements
+- Use color gradients for progression difficulty
+- Add note difficulty indicators (★☆☆ to ★★★)
+- Show finger position diagrams for chords
+- Highlight active beats/measures
+- Display waveform overlay for timing reference
+
+### Interactive Features
+- Click to add/edit tab notes
+- Drag to adjust timing
+- Quick chord insertion shortcuts
+- Voice input for lyrics
+- Tempo adjustment slider
+- Loop section markers
