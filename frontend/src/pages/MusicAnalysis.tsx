@@ -24,7 +24,7 @@ interface AnalysisResults {
       text: string;
     }>;
   };
-  musicxml_path?: string;
+  musicxml?: string;
 }
 
 const MusicAnalysis: React.FC = () => {
@@ -58,7 +58,7 @@ const MusicAnalysis: React.FC = () => {
           endpoint = '/api/transcribe';
           break;
         case 'sheet':
-          endpoint = '/api/sheet-music';
+          endpoint = '/api/sheet';
           break;
       }
 
@@ -105,12 +105,23 @@ const MusicAnalysis: React.FC = () => {
           />
         </Paper>
 
-        {results.musicxml_path && (
+        {results.musicxml && (
           <Paper sx={{ p: 3, mb: 3 }}>
             <Typography variant="h6" gutterBottom>
               Sheet Music
             </Typography>
-            <SheetMusic musicXmlPath={results.musicxml_path} />
+            <SheetMusic musicXmlPath={results.musicxml} />
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="body2" color="text.secondary">
+                <a 
+                  href={`http://localhost:5000/uploads/${results.musicxml.split('/').pop()}`} 
+                  download
+                  style={{ textDecoration: 'none', color: 'inherit' }}
+                >
+                  下载 MusicXML 文件
+                </a>
+              </Typography>
+            </Box>
           </Paper>
         )}
 

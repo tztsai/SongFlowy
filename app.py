@@ -29,7 +29,7 @@ def index():
             '/api/upload',
             '/api/analyze_pitch',
             '/api/transcribe',
-            '/api/sheet-music',
+            '/api/sheet',
             '/uploads/<filename>'
         ]
     })
@@ -42,85 +42,109 @@ def upload_audio():
     file = request.files['file']
     if file.filename == '':
         return jsonify({'error': 'No file selected'}), 400
-
-    filepath = os.path.join(UPLOAD_FOLDER, file.filename)
-    file.save(filepath)
-    logging.info(f"File uploaded: {file.filename}")
     
-    # 加载音频文件
     try:
+        # Save the uploaded file
+        filepath = os.path.join(UPLOAD_FOLDER, file.filename)
+        file.save(filepath)
+        logging.info(f"File uploaded: {file.filename}")
+        
+        # Load and process the audio file
         y, sr = librosa.load(filepath)
-        logging.info(f"Sampling rate: {sr}")
         
-        # 基本音乐信息分析
-        tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
-        if len(tempo) == 1:
-            tempo = round(tempo.item())
-        else:
-            raise ValueError("Unable to detect tempo")
-        logging.info(f"Tempo: {tempo}")
-        
-        # 和弦分析
-        harmonic = librosa.effects.harmonic(y)
-        
-        # chroma是音频文件的和弦特征，表示音频文件中不同音高的强度
-        chroma = librosa.feature.chroma_cqt(y=harmonic, sr=sr)
-        
-        # 使用music21进行调式分析
+        # Extract tempo
+        tempo = librosa.beat.beat_track(y=y, sr=sr)[0]
+        if isinstance(tempo, np.ndarray):
+            tempo = float(tempo[0])
+            
+        # Get the note sequence using pitch detection
+        pitches, magnitudes = librosa.piptrack(y=y, sr=sr)
         notes = []
-        for i, magnitude in enumerate(chroma.mean(axis=1)):
-            if magnitude > np.mean(chroma):
-                note = librosa.midi_to_note(i + 60)
-                # Replace Unicode sharp symbol with standard sharp notation
-                note = note.replace('♯', '#')
+        for i in range(len(pitches[0])):
+            index = magnitudes[:,i].argmax()
+            pitch = pitches[index,i]
+            if pitch > 0:  # Only include valid pitches
+                note = librosa.hz_to_note(pitch)
                 notes.append(note)
         
+        # Create a music21 score from notes for key analysis
         score = music21.stream.Score()
         for note in notes:
+            note = note.replace('♯', '#')
             score.append(music21.note.Note(note))
-        
-        # 打印调式
-        logging.info(f"Notes: {notes}")
-        
         key = score.analyze('key')
-        logging.info(f"Key: {key}")
         
-        # 保存处理后的音频
+        # Save processed audio
         processed_path = os.path.join(UPLOAD_FOLDER, 'processed_' + file.filename)
         sf.write(processed_path, y, sr)
-
-        # 获取主要音高
-        # pitches, magnitudes = librosa.piptrack(y=y, sr=sr)
-        # pitch_values = []
-        # for i in range(len(pitches[0])):
-        #     index = magnitudes[:,i].argmax()
-        #     pitch = pitches[index,i]
-        #     if pitch is not None:
-        #         pitch_values.append(librosa.midi_to_note(pitch + 60))
-        #     else:
-        #         pitch_values.append(None)
-
-        # Convert to sheet music
-        score = audio_to_sheet_music(processed_path)
         
-        # Convert to MusicXML
-        xml_path = os.path.join(UPLOAD_FOLDER, 'sheet_music.xml')
-        score.write('musicxml', xml_path)
-
-        logging.info(f"Sheet music saved to {xml_path}")
         logging.info("Analysis completed.")
         
         return jsonify({
             'tempo': tempo,
-            'notes': notes,
             'key': str(key),
-            'processed_path': processed_path,
-            'musicxml_path': xml_path,
-            'message': '注意：目前暂不支持人声分离功能，建议使用Ultimate Vocal Remover进行人声分离'
+            'processed_path': processed_path
         })
         
     except Exception as e:
         print(traceback.format_exc())
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/analyze_pitch', methods=['POST'])
+def analyze_pitch():
+    """Analyze pitch of an audio file"""
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file provided'}), 400
+    
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': 'No file selected'}), 400
+
+    try:
+        # Save the uploaded file
+        filepath = os.path.join(UPLOAD_FOLDER, file.filename)
+        file.save(filepath)
+        logging.info(f"File uploaded for pitch analysis: {file.filename}")
+        
+        # Load the audio file
+        y, sr = librosa.load(filepath)
+        
+        # Extract pitch and timing information
+        pitches, magnitudes = librosa.piptrack(y=y, sr=sr)
+        
+        # Get time points for the pitch values
+        times = librosa.times_like(pitches)
+        
+        # For each frame, find the pitch with highest magnitude
+        pitch_values = []
+        for i in range(len(pitches[0])):
+            index = magnitudes[:,i].argmax()
+            pitch = pitches[index,i]
+            if pitch > 0:  # Only include valid pitches
+                note = librosa.hz_to_note(pitch)
+                pitch_values.append(note)
+        
+        # Create a plot of the pitch contour
+        plt.figure(figsize=(12, 4))
+        plt.plot(times, pitches[magnitudes.argmax(axis=0), range(pitches.shape[1])])
+        plt.xlabel('Time (s)')
+        plt.ylabel('Frequency (Hz)')
+        plt.title('Pitch Contour')
+        
+        # Save the plot
+        plot_path = os.path.join(UPLOAD_FOLDER, 'pitch_plot.png')
+        plt.savefig(plot_path)
+        plt.close()
+        
+        # Return the analysis results
+        return jsonify({
+            'frequencies': pitch_values,
+            'times': times.tolist(),
+            'plot': 'pitch_plot.png'
+        })
+        
+    except Exception as e:
+        logging.error(f"Error in pitch analysis: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/transcribe', methods=['POST'])
@@ -140,6 +164,46 @@ def transcribe_audio():
         'text': result['text'],
         'segments': result['segments']
     })
+
+@app.route('/api/sheet', methods=['POST'])
+def generate_sheet():
+    """Generate sheet music from audio file"""
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file provided'}), 400
+    
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': 'No file selected'}), 400
+
+    try:
+        # Save the uploaded file
+        filepath = os.path.join(UPLOAD_FOLDER, file.filename)
+        file.save(filepath)
+        logging.info(f"File uploaded for sheet music generation: {file.filename}")
+        
+        # Load and process the audio file
+        y, sr = librosa.load(filepath)
+        
+        # Save processed audio
+        processed_path = os.path.join(UPLOAD_FOLDER, 'processed_' + file.filename)
+        sf.write(processed_path, y, sr)
+        
+        # Convert to sheet music
+        score = audio_to_sheet_music(processed_path)
+        
+        # Convert to MusicXML
+        xml_path = os.path.join(UPLOAD_FOLDER, 'sheet_music.xml')
+        score.write('musicxml', xml_path)
+        
+        logging.info(f"Sheet music saved to {xml_path}")
+        
+        return jsonify({
+            'musicxml_path': 'sheet_music.xml'
+        })
+        
+    except Exception as e:
+        logging.error(f"Error in sheet music generation: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 def quantize_duration(duration, base_duration=0.25):
     """Quantize a duration to the nearest standard note length"""
@@ -218,5 +282,7 @@ if __name__ == '__main__':
     print("  - GET  /")
     print("  - POST /api/upload")
     print("  - POST /api/transcribe")
+    print("  - POST /api/analyze_pitch")
+    print("  - POST /api/sheet")
     print("  - GET  /uploads/<filename>")
     app.run(debug=True)

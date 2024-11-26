@@ -1,7 +1,6 @@
-import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { ThemeProvider, createTheme, CssBaseline } from '@mui/material';
-import AudioUpload from './components/AudioUpload';
+import MusicAnalysis from './pages/MusicAnalysis';
 
 const theme = createTheme({
   palette: {
@@ -27,17 +26,12 @@ const theme = createTheme({
 });
 
 function App() {
-  const handleFileSelect = (file: File) => {
-    // Handle the file selection here if needed
-    console.log('File selected:', file);
-  };
-
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <Router>
         <Routes>
-          <Route path="/" element={<AudioUpload onFileSelect={handleFileSelect} />} />
+          <Route path="/" element={<MusicAnalysis />} />
         </Routes>
       </Router>
     </ThemeProvider>

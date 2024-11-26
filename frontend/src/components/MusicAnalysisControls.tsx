@@ -49,7 +49,6 @@ const MusicAnalysisControls: React.FC<MusicAnalysisControlsProps> = ({
         <Button
           startIcon={<GraphicEqIcon />}
           onClick={() => handleAnalyze('pitch')}
-          disabled={!audioFile || isAnalyzing}
           color={activeAnalysis === 'pitch' ? 'secondary' : 'primary'}
         >
           Analyze Pitch
@@ -57,7 +56,6 @@ const MusicAnalysisControls: React.FC<MusicAnalysisControlsProps> = ({
         <Button
           startIcon={<AudioFileIcon />}
           onClick={() => handleAnalyze('transcribe')}
-          disabled={!audioFile || isAnalyzing}
           color={activeAnalysis === 'transcribe' ? 'secondary' : 'primary'}
         >
           Transcribe Audio
@@ -65,7 +63,6 @@ const MusicAnalysisControls: React.FC<MusicAnalysisControlsProps> = ({
         <Button
           startIcon={<NoteAltIcon />}
           onClick={() => handleAnalyze('sheet')}
-          disabled={!audioFile || isAnalyzing}
           color={activeAnalysis === 'sheet' ? 'secondary' : 'primary'}
         >
           Generate Sheet Music
