@@ -1,70 +1,81 @@
 import React, { useEffect, useRef } from 'react';
-import { Box } from '@mui/material';
-import Vex from 'vexflow';
+import { Box, Paper, Typography } from '@mui/material';
+import { OpenSheetMusicDisplay } from 'opensheetmusicdisplay';
 
 interface SheetMusicProps {
-  abcNotation: string;
+  musicXmlPath?: string;
 }
 
-const SheetMusic: React.FC<SheetMusicProps> = ({ abcNotation }) => {
+const SheetMusic: React.FC<SheetMusicProps> = ({ musicXmlPath }) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const osmdRef = useRef<OpenSheetMusicDisplay | null>(null);
 
   useEffect(() => {
-    if (!containerRef.current || !abcNotation) return;
+    if (!containerRef.current || !musicXmlPath) return;
 
-    // Clear previous content
-    containerRef.current.innerHTML = '';
+    const loadMusicXML = async () => {
+      try {
+        // Initialize OSMD if not already initialized
+        if (!osmdRef.current) {
+          osmdRef.current = new OpenSheetMusicDisplay(containerRef.current!, {
+            autoResize: true,
+            drawTitle: true,
+            drawSubtitle: true,
+            drawComposer: true,
+            drawLyricist: true,
+            drawCredits: true,
+            drawTimeSignatures: true,
+          });
+        }
 
-    // Initialize VexFlow
-    const { Renderer, Stave, Parser, Voice, Formatter } = Vex.Flow;
-    
-    // Create renderer
-    const renderer = new Renderer(
-      containerRef.current,
-      Renderer.Backends.SVG,
-    );
+        // Fetch and load the MusicXML file
+        const response = await fetch(`http://localhost:5000/uploads/${musicXmlPath.split('/').pop()}`);
+        const xmlText = await response.text();
+        
+        // Load and render the score
+        await osmdRef.current.load(xmlText);
+        osmdRef.current.render();
+      } catch (error) {
+        console.error('Error loading music sheet:', error);
+      }
+    };
 
-    // Configure renderer
-    const context = renderer.getContext();
-    context.setFont('Arial', 10);
+    loadMusicXML();
 
-    // Create a stave
-    const stave = new Stave(10, 40, 750);
-    stave.addClef('treble').addTimeSignature('4/4');
-    stave.setContext(context).draw();
-
-    try {
-      // Parse ABC notation and convert to VexFlow notes
-      const parser = new Parser(abcNotation);
-      const notes = parser.parse(abcNotation).notes;
-
-      // Create voice and add notes
-      const voice = new Voice({ num_beats: 4, beat_value: 4 });
-      voice.addTickables(notes);
-
-      // Format and draw
-      new Formatter()
-        .joinVoices([voice])
-        .format([voice], 500);
-      voice.draw(context, stave);
-    } catch (error) {
-      console.error('Error rendering sheet music:', error);
-    }
-  }, [abcNotation]);
+    // Cleanup
+    return () => {
+      if (osmdRef.current) {
+        osmdRef.current.clear();
+      }
+    };
+  }, [musicXmlPath]);
 
   return (
-    <Box
-      ref={containerRef}
-      sx={{
-        width: '100%',
-        height: '400px',
-        overflow: 'auto',
-        bgcolor: 'background.paper',
-        borderRadius: 1,
-        boxShadow: 1,
+    <Paper 
+      elevation={1} 
+      sx={{ 
         p: 2,
+        mt: 2,
+        bgcolor: 'background.paper',
+        borderRadius: 2
       }}
-    />
+    >
+      <Typography variant="h6" gutterBottom>
+        乐谱
+      </Typography>
+      <Box 
+        ref={containerRef}
+        sx={{
+          width: '100%',
+          minHeight: 400,
+          overflowX: 'auto',
+          '& canvas': {
+            maxWidth: '100%',
+            height: 'auto'
+          }
+        }}
+      />
+    </Paper>
   );
 };
 

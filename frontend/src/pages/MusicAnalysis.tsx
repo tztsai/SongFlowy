@@ -24,10 +24,7 @@ interface AnalysisResults {
       text: string;
     }>;
   };
-  sheetMusic?: {
-    abcNotation: string;
-    musicxmlPath: string;
-  };
+  musicxml_path?: string;
 }
 
 const MusicAnalysis: React.FC = () => {
@@ -108,12 +105,12 @@ const MusicAnalysis: React.FC = () => {
           />
         </Paper>
 
-        {results.sheetMusic && (
+        {results.musicxml_path && (
           <Paper sx={{ p: 3, mb: 3 }}>
             <Typography variant="h6" gutterBottom>
               Sheet Music
             </Typography>
-            <SheetMusic abcNotation={results.sheetMusic.abcNotation} />
+            <SheetMusic musicXmlPath={results.musicxml_path} />
           </Paper>
         )}
 

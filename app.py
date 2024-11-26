@@ -55,7 +55,9 @@ def upload_audio():
         # 基本音乐信息分析
         tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
         if len(tempo) == 1:
-            tempo = tempo.item()
+            tempo = round(tempo.item())
+        else:
+            raise ValueError("Unable to detect tempo")
         logging.info(f"Tempo: {tempo}")
         
         # 和弦分析
@@ -86,39 +88,40 @@ def upload_audio():
         # 保存处理后的音频
         processed_path = os.path.join(UPLOAD_FOLDER, 'processed_' + file.filename)
         sf.write(processed_path, y, sr)
+
+        # 获取主要音高
+        # pitches, magnitudes = librosa.piptrack(y=y, sr=sr)
+        # pitch_values = []
+        # for i in range(len(pitches[0])):
+        #     index = magnitudes[:,i].argmax()
+        #     pitch = pitches[index,i]
+        #     if pitch is not None:
+        #         pitch_values.append(librosa.midi_to_note(pitch + 60))
+        #     else:
+        #         pitch_values.append(None)
+
+        # Convert to sheet music
+        score = audio_to_sheet_music(processed_path)
+        
+        # Convert to MusicXML
+        xml_path = os.path.join(UPLOAD_FOLDER, 'sheet_music.xml')
+        score.write('musicxml', xml_path)
+
+        logging.info(f"Sheet music saved to {xml_path}")
+        logging.info("Analysis completed.")
         
         return jsonify({
-            'tempo': float(tempo),
+            'tempo': tempo,
+            'notes': notes,
             'key': str(key),
             'processed_path': processed_path,
+            'musicxml_path': xml_path,
             'message': '注意：目前暂不支持人声分离功能，建议使用Ultimate Vocal Remover进行人声分离'
         })
         
     except Exception as e:
         print(traceback.format_exc())
         return jsonify({'error': str(e)}), 500
-
-@app.route('/api/analyze_pitch', methods=['POST'])
-def analyze_pitch():
-    if 'file' not in request.files:
-        return jsonify({'error': 'No file provided'}), 400
-    
-    file = request.files['file']
-    filepath = os.path.join(UPLOAD_FOLDER, file.filename)
-    file.save(filepath)
-    
-    y, sr = librosa.load(filepath)
-    pitches, magnitudes = librosa.piptrack(y=y, sr=sr)
-    
-    # 获取主要音高
-    pitch_values = []
-    for i in range(len(pitches[0])):
-        index = magnitudes[:,i].argmax()
-        pitch_values.append(pitches[index,i])
-    
-    return jsonify({
-        'pitch_values': pitch_values
-    })
 
 @app.route('/api/transcribe', methods=['POST'])
 def transcribe_audio():
@@ -138,6 +141,15 @@ def transcribe_audio():
         'segments': result['segments']
     })
 
+def quantize_duration(duration, base_duration=0.25):
+    """Quantize a duration to the nearest standard note length"""
+    # Standard note lengths (in quarter notes)
+    standard_lengths = [4.0, 2.0, 1.0, 0.5, 0.25, 0.125]
+    
+    # Find the closest standard length
+    quantized = min(standard_lengths, key=lambda x: abs(x - duration))
+    return max(quantized, base_duration)  # Ensure minimum duration
+
 def audio_to_sheet_music(audio_path):
     """Convert audio file to sheet music notation"""
     # Load the audio file
@@ -155,7 +167,9 @@ def audio_to_sheet_music(audio_path):
     part = music21.stream.Part()
     
     # Detect tempo
-    tempo = librosa.beat.beat_track(y=y, sr=sr)[0][0]
+    tempo = librosa.beat.beat_track(y=y, sr=sr)[0]
+    if isinstance(tempo, np.ndarray):
+        tempo = float(tempo[0])
     mm = music21.tempo.MetronomeMark(number=tempo)
     part.append(mm)
     
@@ -181,54 +195,15 @@ def audio_to_sheet_music(audio_path):
             # Set duration (quarter note by default)
             if i < len(onset_times) - 1:
                 duration = onset_times[i + 1] - onset_time
-                note.quarterLength = duration * (tempo / 60)  # Convert to quarter note duration
+                quarter_note_duration = duration * (tempo / 60)  # Convert to quarter note duration
+                note.quarterLength = quantize_duration(quarter_note_duration)
             else:
-                note.quarterLength = 1.0
+                note.quarterLength = 1.0  # Default to quarter note for last note
             
             part.append(note)
     
     score.append(part)
     return score
-
-@app.route('/api/sheet-music', methods=['POST'])
-def generate_sheet_music():
-    """Generate sheet music from audio file"""
-    if 'file' not in request.files:
-        return jsonify({'error': 'No file provided'}), 400
-    
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({'error': 'No file selected'}), 400
-
-    try:
-        # Save uploaded file
-        filepath = os.path.join(UPLOAD_FOLDER, file.filename)
-        file.save(filepath)
-        
-        # Convert to sheet music
-        score = audio_to_sheet_music(filepath)
-        
-        # Convert to MusicXML
-        xml_path = os.path.join(UPLOAD_FOLDER, 'sheet_music.xml')
-        score.write('musicxml', xml_path)
-        
-        # Convert to ABC notation for VexFlow
-        abc_handler = music21.converter.subConverters.ConverterABC()
-        abc_path = os.path.join(UPLOAD_FOLDER, 'sheet_music.abc')
-        abc_handler.write(score, fmt='abc', fp=abc_path, subformats=['abc'])
-        
-        with open(abc_path, 'r') as f:
-            abc_notation = f.read()
-        
-        return jsonify({
-            'musicxml_path': xml_path,
-            'abc_notation': abc_notation,
-            'message': 'Sheet music generated successfully'
-        })
-        
-    except Exception as e:
-        print(traceback.format_exc())
-        return jsonify({'error': str(e)}), 500
 
 @app.route('/uploads/<path:filename>')
 def serve_audio(filename):
@@ -242,8 +217,6 @@ if __name__ == '__main__':
     print("Available endpoints:")
     print("  - GET  /")
     print("  - POST /api/upload")
-    print("  - POST /api/analyze_pitch")
     print("  - POST /api/transcribe")
-    print("  - POST /api/sheet-music")
     print("  - GET  /uploads/<filename>")
     app.run(debug=True)

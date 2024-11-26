@@ -13,6 +13,7 @@ import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import axios from 'axios';
 import { useDropzone } from 'react-dropzone';
 import AudioPreview from './AudioPreview';
+import SheetMusic from './SheetMusic'; // Import the SheetMusic component
 
 const VisuallyHiddenInput = styled('input')`
   clip: rect(0 0 0 0);
@@ -39,8 +40,9 @@ interface ProcessedAudio {
   key: string;
   processed_path: string;
   message: string;
-  pitch?: any;
+  pitches?: any;
   transcription?: any;
+  musicxml_path?: string;
 }
 
 interface AudioUploadProps {
@@ -188,13 +190,20 @@ const AudioUpload: React.FC<AudioUploadProps> = ({ onFileSelect, error }) => {
           <Typography variant="h6" gutterBottom>
             分析结果
           </Typography>
+
+          <Typography variant="subtitle1" gutterBottom>
+            调性: {processedAudio.key}
+          </Typography>
+          <Typography variant="subtitle1" gutterBottom>
+            节奏: {processedAudio.tempo} BPM
+          </Typography>
           
-          {processedAudio.pitch && (
+          {processedAudio.pitches && (
             <Box sx={{ mb: 2 }}>
               <Typography variant="subtitle1" gutterBottom>
                 音高分析
               </Typography>
-              <pre>{JSON.stringify(processedAudio.pitch, null, 2)}</pre>
+              <pre>{JSON.stringify(processedAudio.pitches, null, 2)}</pre>
             </Box>
           )}
 
@@ -206,6 +215,26 @@ const AudioUpload: React.FC<AudioUploadProps> = ({ onFileSelect, error }) => {
               <Typography variant="body1">
                 {processedAudio.transcription.text}
               </Typography>
+            </Box>
+          )}
+
+          {processedAudio.musicxml_path && (
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="subtitle1" gutterBottom>
+                乐谱预览
+              </Typography>
+              <SheetMusic musicXmlPath={processedAudio.musicxml_path} />
+              <Box sx={{ mt: 2 }}>
+                <Typography variant="body2" color="text.secondary">
+                  <a 
+                    href={`http://localhost:5000/uploads/${processedAudio.musicxml_path.split('/').pop()}`} 
+                    download
+                    style={{ textDecoration: 'none', color: 'inherit' }}
+                  >
+                    下载 MusicXML 文件
+                  </a>
+                </Typography>
+              </Box>
             </Box>
           )}
         </Box>
