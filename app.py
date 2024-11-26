@@ -6,6 +6,11 @@ import numpy as np
 import soundfile as sf
 import whisper
 import music21
+import traceback
+import logging
+import plotly
+
+logging.basicConfig(level=logging.INFO)
 
 app = Flask(__name__)
 CORS(app)
@@ -38,29 +43,43 @@ def upload_audio():
 
     filepath = os.path.join(UPLOAD_FOLDER, file.filename)
     file.save(filepath)
+    logging.info(f"File uploaded: {file.filename}")
     
     # 加载音频文件
     try:
         y, sr = librosa.load(filepath)
+        logging.info(f"Sampling rate: {sr}")
         
         # 基本音乐信息分析
         tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
+        logging.info(f"Tempo: {tempo}")
         
         # 和弦分析
         harmonic = librosa.effects.harmonic(y)
-        chroma = librosa.feature.chroma_cqt(y=harmonic, sr=sr, dtype=np.complex128)
+        
+        
+        # chroma是音频文件的和弦特征，表示音频文件中不同音高的强度
+        chroma = librosa.feature.chroma_cqt(y=harmonic, sr=sr)
+        
         
         # 使用music21进行调式分析
         notes = []
         for i, magnitude in enumerate(chroma.mean(axis=1)):
             if magnitude > np.mean(chroma):
-                notes.append(librosa.midi_to_note(i + 60))
+                note = librosa.midi_to_note(i + 60)
+                # Replace Unicode sharp symbol with standard sharp notation
+                note = note.replace('♯', '#')
+                notes.append(note)
         
         score = music21.stream.Score()
         for note in notes:
             score.append(music21.note.Note(note))
         
+        # 打印调式
+        logging.info(f"Notes: {notes}")
+        
         key = score.analyze('key')
+        logging.info(f"Key: {key}")
         
         # 保存处理后的音频
         processed_path = os.path.join(UPLOAD_FOLDER, 'processed_' + file.filename)
@@ -74,6 +93,7 @@ def upload_audio():
         })
         
     except Exception as e:
+        print(traceback.format_exc())
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/analyze_pitch', methods=['POST'])
