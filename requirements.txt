@@ -1,0 +1,10 @@
+Flask==2.3.3
+flask-cors==4.0.0
+librosa==0.10.2
+numpy==1.24.3
+soundfile==0.12.1
+openai-whisper==20230918
+scipy==1.11.3
+music21==9.1.0
+tensorflow==2.13.0
+git+https://git.aubio.org/aubio/aubio/
