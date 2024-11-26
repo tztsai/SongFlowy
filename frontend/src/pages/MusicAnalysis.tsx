@@ -9,12 +9,13 @@ import {
 import MusicAnalysisControls from '../components/MusicAnalysisControls';
 import SheetMusic from '../components/SheetMusic';
 import AudioUpload from '../components/AudioUpload';
+import Plot from 'react-plotly.js';
 
 interface AnalysisResults {
   pitch?: {
     frequencies: number[];
     times: number[];
-    plot?: string;
+    plot: string;
   };
   transcription?: {
     text: string;
@@ -24,7 +25,9 @@ interface AnalysisResults {
       text: string;
     }>;
   };
-  musicxml?: string;
+  sheet?: {
+    musicxml: string;
+  };
 }
 
 const MusicAnalysis: React.FC = () => {
@@ -78,6 +81,7 @@ const MusicAnalysis: React.FC = () => {
         ...prev,
         [type]: data,
       }));
+      console.log(results);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
@@ -105,16 +109,16 @@ const MusicAnalysis: React.FC = () => {
           />
         </Paper>
 
-        {results.musicxml && (
+        {results.sheet && (
           <Paper sx={{ p: 3, mb: 3 }}>
             <Typography variant="h6" gutterBottom>
               Sheet Music
             </Typography>
-            <SheetMusic musicXmlPath={results.musicxml} />
+            <SheetMusic musicXmlPath={results.sheet.musicxml} />
             <Box sx={{ mt: 2 }}>
               <Typography variant="body2" color="text.secondary">
                 <a 
-                  href={`http://localhost:5000/uploads/${results.musicxml.split('/').pop()}`} 
+                  href={`http://localhost:5000/uploads/${results.sheet.musicxml.split('/').pop()}`} 
                   download
                   style={{ textDecoration: 'none', color: 'inherit' }}
                 >
@@ -155,11 +159,16 @@ const MusicAnalysis: React.FC = () => {
             <Typography variant="h6" gutterBottom>
               Pitch Analysis
             </Typography>
-            <Box 
-              component="img" 
-              src={`data:image/png;base64,${results.pitch.plot}`}
-              sx={{ width: '100%', height: 'auto' }}
-              alt="Pitch analysis plot"
+            <Plot
+              data={JSON.parse(results.pitch.plot).data}
+              layout={{
+                ...JSON.parse(results.pitch.plot).layout,
+                width: undefined,
+                height: 400,
+                autosize: true,
+              }}
+              style={{ width: '100%', height: '100%' }}
+              useResizeHandler={true}
             />
           </Paper>
         )}

@@ -5,8 +5,7 @@ import {
   CircularProgress, 
   Typography, 
   Paper,
-  Alert,
-  Link
+  Alert
 } from '@mui/material';
 import { styled } from '@mui/material/styles';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
@@ -118,7 +117,7 @@ const AudioUploadComponent: React.FC<AudioUploadProps> = ({ onFileSelect, error 
   );
 };
 
-const AudioUpload: React.FC<AudioUploadProps> = ({ onFileSelect, error }) => {
+const AudioUpload: React.FC<AudioUploadProps> = ({ onFileSelect }) => {
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [processedAudio, setProcessedAudio] = useState<ProcessedAudio | null>(null);
@@ -126,6 +125,7 @@ const AudioUpload: React.FC<AudioUploadProps> = ({ onFileSelect, error }) => {
 
   const handleFileChange = (file: File) => {
     setFile(file);
+    file && onFileSelect(file);
     setError(null);
   };
 
@@ -167,12 +167,6 @@ const AudioUpload: React.FC<AudioUploadProps> = ({ onFileSelect, error }) => {
         <AudioUploadComponent onFileSelect={handleFileChange} error={errorState} />
       </Box>
 
-      {file && (
-        <Typography variant="body1" gutterBottom>
-          已选择: {file.name}
-        </Typography>
-      )}
-
       <Box sx={{ my: 2 }}>
         <Button
           variant="contained"
@@ -194,7 +188,7 @@ const AudioUpload: React.FC<AudioUploadProps> = ({ onFileSelect, error }) => {
             调性: {processedAudio.key}
           </Typography>
           <Typography variant="subtitle1" gutterBottom>
-            节奏: {processedAudio.tempo} BPM
+            节奏: {Math.round(processedAudio.tempo)} BPM
           </Typography>
         </Box>
       )}

@@ -8,7 +8,7 @@ import whisper
 import music21
 import traceback
 import logging
-import matplotlib.pyplot as plt
+import plotly
 import json
 
 logging.basicConfig(level=logging.INFO)
@@ -124,23 +124,32 @@ def analyze_pitch():
                 note = librosa.hz_to_note(pitch)
                 pitch_values.append(note)
         
-        # Create a plot of the pitch contour
-        plt.figure(figsize=(12, 4))
-        plt.plot(times, pitches[magnitudes.argmax(axis=0), range(pitches.shape[1])])
-        plt.xlabel('Time (s)')
-        plt.ylabel('Frequency (Hz)')
-        plt.title('Pitch Contour')
+        # Create a plotly plot of the pitch contour
+        pitch_contour = plotly.graph_objs.Scatter(
+            x=times,
+            y=pitches[magnitudes.argmax(axis=0), range(pitches.shape[1])],
+            mode='lines',
+            name='Pitch Contour'
+        )
+
+        layout = plotly.graph_objs.Layout(
+            title='Pitch Contour',
+            xaxis=dict(title='Time (s)'),
+            yaxis=dict(title='Frequency (Hz)')
+        )
+
+        fig = plotly.graph_objs.Figure(data=[pitch_contour], layout=layout)
         
-        # Save the plot
-        plot_path = os.path.join(UPLOAD_FOLDER, 'pitch_plot.png')
-        plt.savefig(plot_path)
-        plt.close()
+        # Convert the plot to JSON for the frontend
+        plot_json = json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)
+
+        logging.info("Pitch analysis completed.")
         
         # Return the analysis results
         return jsonify({
             'frequencies': pitch_values,
             'times': times.tolist(),
-            'plot': 'pitch_plot.png'
+            'plot': plot_json
         })
         
     except Exception as e:
@@ -159,6 +168,8 @@ def transcribe_audio():
     # 使用Whisper进行语音识别
     model = whisper.load_model("base")
     result = model.transcribe(filepath)
+
+    logging.info("Transcription completed.")
     
     return jsonify({
         'text': result['text'],
@@ -198,7 +209,7 @@ def generate_sheet():
         logging.info(f"Sheet music saved to {xml_path}")
         
         return jsonify({
-            'musicxml_path': 'sheet_music.xml'
+            'musicxml': 'sheet_music.xml'
         })
         
     except Exception as e:
