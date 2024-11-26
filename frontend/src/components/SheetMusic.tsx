@@ -16,7 +16,7 @@ const SheetMusic: React.FC<SheetMusicProps> = ({ abcNotation }) => {
     containerRef.current.innerHTML = '';
 
     // Initialize VexFlow
-    const { Renderer, Stave } = Vex.Flow;
+    const { Renderer, Stave, Parser, Voice, Formatter } = Vex.Flow;
     
     // Create renderer
     const renderer = new Renderer(
@@ -35,15 +35,15 @@ const SheetMusic: React.FC<SheetMusicProps> = ({ abcNotation }) => {
 
     try {
       // Parse ABC notation and convert to VexFlow notes
-      const parser = new Vex.Parser(Vex.Flow.Grammar);
+      const parser = new Parser(abcNotation);
       const notes = parser.parse(abcNotation).notes;
 
       // Create voice and add notes
-      const voice = new VF.Voice({ num_beats: 4, beat_value: 4 });
+      const voice = new Voice({ num_beats: 4, beat_value: 4 });
       voice.addTickables(notes);
 
       // Format and draw
-      new VF.Formatter()
+      new Formatter()
         .joinVoices([voice])
         .format([voice], 500);
       voice.draw(context, stave);

@@ -27,12 +27,17 @@ const theme = createTheme({
 });
 
 function App() {
+  const handleFileSelect = (file: File) => {
+    // Handle the file selection here if needed
+    console.log('File selected:', file);
+  };
+
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <Router>
         <Routes>
-          <Route path="/" element={<AudioUpload />} />
+          <Route path="/" element={<AudioUpload onFileSelect={handleFileSelect} />} />
         </Routes>
       </Router>
     </ThemeProvider>

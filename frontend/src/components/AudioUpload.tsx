@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { 
   Box, 
   Button, 
@@ -11,6 +11,8 @@ import {
 import { styled } from '@mui/material/styles';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import axios from 'axios';
+import { useDropzone } from 'react-dropzone';
+import AudioPreview from './AudioPreview';
 
 const VisuallyHiddenInput = styled('input')`
   clip: rect(0 0 0 0);
@@ -39,17 +41,90 @@ interface ProcessedAudio {
   message: string;
 }
 
-const AudioUpload: React.FC = () => {
+interface AudioUploadProps {
+  onFileSelect: (file: File) => void;
+  error?: string | null;
+}
+
+const AudioUploadComponent: React.FC<AudioUploadProps> = ({ onFileSelect, error }) => {
+  const [selectedFile, setSelectedFile] = React.useState<File | null>(null);
+
+  const onDrop = useCallback((acceptedFiles: File[]) => {
+    if (acceptedFiles.length > 0) {
+      const file = acceptedFiles[0];
+      setSelectedFile(file);
+      onFileSelect(file);
+    }
+  }, [onFileSelect]);
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: {
+      'audio/*': ['.mp3', '.wav', '.m4a', '.aac']
+    },
+    maxFiles: 1,
+  });
+
+  return (
+    <Box>
+      <Box
+        {...getRootProps()}
+        sx={{
+          border: '2px dashed',
+          borderColor: isDragActive ? 'primary.main' : 'grey.300',
+          borderRadius: 2,
+          p: 3,
+          textAlign: 'center',
+          cursor: 'pointer',
+          bgcolor: isDragActive ? 'action.hover' : 'background.paper',
+          transition: 'all 0.2s ease',
+          '&:hover': {
+            bgcolor: 'action.hover',
+            borderColor: 'primary.main',
+          },
+        }}
+      >
+        <input {...getInputProps()} />
+        <CloudUploadIcon sx={{ fontSize: 48, color: 'primary.main', mb: 2 }} />
+        <Typography variant="h6" gutterBottom>
+          {isDragActive ? 'Drop the audio file here' : 'Upload Audio File'}
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          Drag and drop an audio file here, or click to select
+        </Typography>
+        <Typography variant="caption" display="block" sx={{ mt: 1 }}>
+          Supported formats: MP3, WAV, M4A, AAC
+        </Typography>
+        <Button
+          variant="contained"
+          component="span"
+          sx={{ mt: 2 }}
+          startIcon={<CloudUploadIcon />}
+        >
+          Select File
+        </Button>
+      </Box>
+
+      {error && (
+        <Alert severity="error" sx={{ mt: 2 }}>
+          {error}
+        </Alert>
+      )}
+
+      {selectedFile && <AudioPreview file={selectedFile} />}
+    </Box>
+  );
+};
+
+const AudioUpload: React.FC<AudioUploadProps> = ({ onFileSelect, error }) => {
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [processedAudio, setProcessedAudio] = useState<ProcessedAudio | null>(null);
+  const [errorState, setError] = useState<string | null>(null);
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (event.target.files && event.target.files[0]) {
-      setFile(event.target.files[0]);
-      setError(null);
-    }
+  const handleFileChange = (file: File) => {
+    setFile(file);
+    setError(null);
   };
 
   const handleUpload = async () => {
@@ -87,19 +162,7 @@ const AudioUpload: React.FC = () => {
       </Typography>
       
       <Box sx={{ my: 3 }}>
-        <Button
-          component="label"
-          variant="contained"
-          startIcon={<CloudUploadIcon />}
-          disabled={loading}
-        >
-          选择音频文件
-          <VisuallyHiddenInput
-            type="file"
-            accept="audio/*"
-            onChange={handleFileChange}
-          />
-        </Button>
+        <AudioUploadComponent onFileSelect={handleFileChange} error={errorState} />
       </Box>
 
       {file && (
@@ -118,12 +181,6 @@ const AudioUpload: React.FC = () => {
           {loading ? <CircularProgress size={24} /> : '开始分析'}
         </Button>
       </Box>
-
-      {error && (
-        <Alert severity="error" sx={{ mt: 2 }}>
-          {error}
-        </Alert>
-      )}
 
       {processedAudio && (
         <Box sx={{ mt: 3, textAlign: 'left' }}>

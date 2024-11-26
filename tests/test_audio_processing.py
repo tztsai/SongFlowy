@@ -188,9 +188,8 @@ def test_error_handling_empty_file(client):
     """Test error handling with empty file"""
     response = client.post(
         '/api/upload',
-        data={'file': (b'', 'empty.wav')}
+        data={'file': (b'', '')}
     )
     data = response.get_json()
-    print(data)
     assert response.status_code == 400
     assert 'error' in data
