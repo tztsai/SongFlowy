@@ -12,10 +12,8 @@
   - Add interactive sheet music display
 
 ## Phase 2: Game-Like Music Learning Interface
-- [ ] Vertical Scrolling Music Tab
-  - Implement note falling animation system
-  - Add vertical grid system for notes
-  - Create smooth scrolling mechanism
+- [ ] Auto Scrolling Music Tab
+  - Implement smooth and horizontal note scrolling animation system
   - Sync scrolling with audio playback
 - [ ] Multi-Column Layout
   - Chord progression display
