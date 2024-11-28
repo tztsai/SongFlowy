@@ -1,8 +1,6 @@
 <template>
   <v-card class="main-track-editor" elevation="3">
     <v-card-title class="text-h5 font-weight-bold">
-      Track Editor
-      <v-spacer></v-spacer>
       <v-chip :color="isPlaying ? 'success' : 'primary'" class="ml-2">
         {{ isPlaying ? 'Playing' : 'Paused' }}
       </v-chip>
@@ -11,11 +9,6 @@
     <!-- Track Grid -->
     <v-card-text>
       <div class="track-grid">
-        <div class="time-markers">
-          <div v-for="beat in 16" :key="'marker-' + beat" class="time-marker">
-            {{ beat }}
-          </div>
-        </div>
         <!-- Rows for time -->
         <div v-for="row in rows" :key="row" class="time-row">
           <!-- Columns for pitch -->
@@ -29,10 +22,10 @@
       </div>
 
       <!-- Scale Notes at the Bottom -->
-      <div class="scale-notes">
-        <v-chip v-for="(note, index) in scaleNotes" :key="index" :color="isScaleNoteHighlighted(note) ? 'primary' : ''"
-          :variant="isScaleNoteHighlighted(note) ? 'elevated' : 'outlined'" class="ma-1">
-          {{ note }}
+      <div class="scale-notes" :style="{ 'grid-template-columns': `repeat(${cols}, 1fr)` }">
+        <v-chip v-for="col in cols" :key="col" :color="isScaleNoteHighlighted(scaleNotes[col % scaleNotes.length]) ? 'primary' : ''"
+          :variant="isScaleNoteHighlighted(scaleNotes[col % scaleNotes.length]) ? 'elevated' : 'outlined'" class="scale-note-chip">
+          {{ scaleNotes[col % scaleNotes.length] }}
         </v-chip>
       </div>
     </v-card-text>
@@ -47,15 +40,11 @@ const musicStore = useMusicStore()
 const isPlaying = computed(() => musicStore.isPlaying)
 
 const rows = ref(10)
-const cols = ref(16)
+const cols = ref(14)
 const scaleNotes = computed(() => musicStore.currentScale)
 const activeNotes = ref([])
 
-const noteColors = { 
-  'F': '#F6CA32', 'g': '#FFAD5B', 'G': '#FF9398', 'a': '#FF8CDE', 
-  'A': '#FF9FFF', 'b': '#D3BEFF', 'B': '#3FD8FF', 'C': '#00E9FF', 
-  'd': '#00F1FF', 'D': '#00F2C1', 'e': '#49EC79', 'E': '#AFDF40' 
-}
+const noteColors = {'D': '#8100FF', 'C#': '#5900FF', 'C': '#001CFF', 'B': '#008BD6', 'A#': '#00C986', 'A': '#00FF00', 'G#': '#00FF00', 'G': '#00FF00', 'F#': '#E0FF00', 'F': '#FFCD00', 'E': '#FF5600', 'D#': '#FF0000'}
 
 function toggleNote(row, col) {
   const existingNoteIndex = activeNotes.value.findIndex(
@@ -65,7 +54,7 @@ function toggleNote(row, col) {
   if (existingNoteIndex >= 0) {
     activeNotes.value.splice(existingNoteIndex, 1)
   } else {
-    const note = scaleNotes.value[row % scaleNotes.value.length]
+    const note = scaleNotes.value[col % scaleNotes.value.length] // Use column index to determine note
     activeNotes.value.push({
       row,
       col,
@@ -107,13 +96,13 @@ function isScaleNoteHighlighted(note) {
   position: relative;
   display: grid;
   grid-template-rows: repeat(10, 1fr);
-  grid-template-columns: repeat(16, 1fr);
+  grid-template-columns: repeat(14, 1fr);
   gap: 1px;
   background: #2D2D2D;
   border-radius: 4px;
   padding: 1px;
   margin: 16px 0;
-  aspect-ratio: 16/10;
+  aspect-ratio: 14/10;
 }
 
 .time-markers {
@@ -173,13 +162,14 @@ function isScaleNoteHighlighted(note) {
 }
 
 .scale-notes {
-  display: flex;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 16px;
+  display: grid;
+  gap: 1px;
   padding: 8px;
-  background: #2D2D2D;
-  border-radius: 4px;
+  margin-top: 16px;
+}
+
+.scale-note-chip {
+  margin: 0 !important;
+  justify-self: center;
 }
 </style>
