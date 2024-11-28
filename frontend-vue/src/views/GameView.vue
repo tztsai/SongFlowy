@@ -12,7 +12,7 @@ import MainTrackEditor from '@/components/MainTrackEditor.vue'
     <v-main>
       <v-container fluid>
         <v-row>
-          <v-col cols="12" md="7">
+          <v-col cols="12" md="8">
             <main-track-editor />
           </v-col>
         </v-row>

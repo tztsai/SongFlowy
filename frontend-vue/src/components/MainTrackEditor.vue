@@ -1,30 +1,38 @@
 <template>
   <v-card class="main-track-editor" elevation="3">
-    <v-card-title class="text-h5 font-weight-bold">
+    <v-card-title class="d-flex align-center">
       <v-chip :color="isPlaying ? 'success' : 'primary'" class="ml-2">
         {{ isPlaying ? 'Playing' : 'Paused' }}
       </v-chip>
+      <v-spacer></v-spacer>
+      <v-btn-group>
+        <v-btn prepend-icon="mdi-play" color="primary" @click="startPlaying" :disabled="isPlaying">
+          Play
+        </v-btn>
+        <v-btn prepend-icon="mdi-stop" color="error" @click="stopPlaying" :disabled="!isPlaying">
+          Stop
+        </v-btn>
+      </v-btn-group>
     </v-card-title>
 
-    <!-- Track Grid -->
-    <v-card-text>
-      <div class="track-grid">
-        <!-- Rows for time -->
-        <div v-for="row in rows" :key="row" class="time-row">
-          <!-- Columns for pitch -->
-          <div v-for="col in cols" :key="col" class="grid-cell" :class="{ 'grid-cell-beat': col % 4 === 0 }"
-            @click="toggleNote(row, col)">
-            <div v-if="isNoteActive(row, col)" class="note-block" :style="{ backgroundColor: getNoteColor(row, col) }">
-              <span class="note-label">{{ getNoteLabel(row, col) }}</span>
-            </div>
+    <v-card-text class="track-container pa-0">
+      <!-- Track Columns -->
+      <div class="track-columns">
+        <div v-for="col in cols" :key="col" class="track-column" @click="addNote($event, col)">
+          <div v-for="note in getNotesInColumn(col)" :key="note.id" class="note" 
+            :style="getNoteStyle(note)"
+            :class="{ 'is-falling': isPlaying }"
+            @mousedown="startDragging(note, $event)"
+            @mouseup="stopDragging"
+            @mousemove="handleDrag($event)">
+            {{ note.noteName }}
           </div>
         </div>
       </div>
 
       <!-- Scale Notes at the Bottom -->
-      <div class="scale-notes" :style="{ 'grid-template-columns': `repeat(${cols}, 1fr)` }">
-        <v-chip v-for="col in cols" :key="col" :color="isScaleNoteHighlighted(scaleNotes[col % scaleNotes.length]) ? 'primary' : ''"
-          :variant="isScaleNoteHighlighted(scaleNotes[col % scaleNotes.length]) ? 'elevated' : 'outlined'" class="scale-note-chip">
+      <div class="scale-notes">
+        <v-chip v-for="col in cols" :key="col" :color="noteColors[scaleNotes[col % scaleNotes.length]]" class="scale-note-chip">
           {{ scaleNotes[col % scaleNotes.length] }}
         </v-chip>
       </div>
@@ -33,139 +41,183 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useMusicStore } from '@/stores/music'
 
 const musicStore = useMusicStore()
 const isPlaying = computed(() => musicStore.isPlaying)
-
-const rows = ref(10)
 const cols = ref(14)
 const scaleNotes = computed(() => musicStore.currentScale)
-const activeNotes = ref([])
 
-const noteColors = {'D': '#8100FF', 'C#': '#5900FF', 'C': '#001CFF', 'B': '#008BD6', 'A#': '#00C986', 'A': '#00FF00', 'G#': '#00FF00', 'G': '#00FF00', 'F#': '#E0FF00', 'F': '#FFCD00', 'E': '#FF5600', 'D#': '#FF0000'}
+const noteColors = {
+  'D': '#8100FF',
+  'C#': '#5900FF',
+  'C': '#001CFF',
+  'B': '#008BD6',
+  'A#': '#00C986',
+  'A': '#00FF00',
+  'G#': '#00FF00',
+  'G': '#00FF00',
+  'F#': '#E0FF00',
+  'F': '#FFCD00',
+  'E': '#FF5600',
+  'D#': '#FF0000'
+}
 
-function toggleNote(row, col) {
-  const existingNoteIndex = activeNotes.value.findIndex(
-    note => note.row === row && note.col === col
-  )
+const notes = ref([])
+let nextNoteId = 0
+let draggedNote = null
+let dragStartY = 0
 
-  if (existingNoteIndex >= 0) {
-    activeNotes.value.splice(existingNoteIndex, 1)
-  } else {
-    const note = scaleNotes.value[col % scaleNotes.value.length] // Use column index to determine note
-    activeNotes.value.push({
-      row,
-      col,
-      note,
-      color: noteColors[note] || '#757575'
-    })
+function addNote(event, col) {
+  if (draggedNote) return
+  const rect = event.target.getBoundingClientRect()
+  const y = event.clientY - rect.top
+  const noteName = scaleNotes.value[col % scaleNotes.value.length]
+  
+  notes.value.push({
+    id: nextNoteId++,
+    col,
+    y,
+    length: 60,
+    noteName,
+    color: noteColors[noteName]
+  })
+}
+
+function getNotesInColumn(col) {
+  return notes.value.filter(note => note.col === col)
+}
+
+function getNoteStyle(note) {
+  return {
+    backgroundColor: note.color,
+    top: `${note.y}px`,
+    height: `${note.length}px`
   }
 }
 
-function isNoteActive(row, col) {
-  return activeNotes.value.some(note => note.row === row && note.col === col)
+function startDragging(note, event) {
+  draggedNote = note
+  dragStartY = event.clientY - note.y
+  event.stopPropagation()
 }
 
-function getNoteColor(row, col) {
-  const note = activeNotes.value.find(note => note.row === row && note.col === col)
-  return note ? note.color : 'transparent'
+function stopDragging() {
+  draggedNote = null
 }
 
-function getNoteLabel(row, col) {
-  const note = activeNotes.value.find(note => note.row === row && note.col === col)
-  return note ? note.note : ''
+function handleDrag(event) {
+  if (!draggedNote) return
+  const newY = event.clientY - dragStartY
+  draggedNote.y = Math.max(0, newY)
+  event.preventDefault()
 }
 
-function isScaleNoteHighlighted(note) {
-  return activeNotes.value.some(activeNote => activeNote.note === note)
+function startPlaying() {
+  musicStore.setIsPlaying(true)
+  startNoteAnimation()
 }
+
+function stopPlaying() {
+  musicStore.setIsPlaying(false)
+}
+
+let animationFrame = null
+
+function startNoteAnimation() {
+  const animate = () => {
+    if (!isPlaying.value) {
+      cancelAnimationFrame(animationFrame)
+      return
+    }
+
+    notes.value.forEach(note => {
+      note.y += (musicStore.bpm / 60) * 2
+      if (note.y > window.innerHeight) {
+        note.y = 0
+      }
+    })
+
+    animationFrame = requestAnimationFrame(animate)
+  }
+
+  animationFrame = requestAnimationFrame(animate)
+}
+
+onUnmounted(() => {
+  if (animationFrame) {
+    cancelAnimationFrame(animationFrame)
+  }
+})
 </script>
 
 <style scoped>
 .main-track-editor {
   background: #1E1E1E;
   border-radius: 8px;
-  height: calc(100vh - 120px);
+  height: calc(100vh - 64px);
   display: flex;
   flex-direction: column;
 }
 
-.track-grid {
+.track-container {
+  flex: 1;
   position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.track-columns {
+  flex: 1;
   display: grid;
-  grid-template-rows: repeat(10, 1fr);
   grid-template-columns: repeat(14, 1fr);
   gap: 1px;
   background: #2D2D2D;
-  border-radius: 4px;
   padding: 1px;
-  margin: 16px 0;
-  aspect-ratio: 14/10;
-}
-
-.time-markers {
-  position: absolute;
-  top: -24px;
-  left: 0;
-  right: 0;
-  display: flex;
-  justify-content: space-between;
-  padding: 0 8px;
-}
-
-.time-marker {
-  color: #757575;
-  font-size: 0.8rem;
-}
-
-.time-row {
-  display: contents;
-}
-
-.grid-cell {
-  background: #363636;
-  transition: background-color 0.2s;
-  cursor: pointer;
   position: relative;
+  overflow: hidden;
 }
 
-.grid-cell:hover {
-  background: #404040;
+.track-column {
+  background: #1E1E1E;
+  position: relative;
+  min-height: 100%;
+  min-width: 30px;
+  width: 4vw;
+  cursor: pointer;
 }
 
-.grid-cell-beat {
-  background: #404040;
+.track-column:hover {
+  background: #2A2A2A;
 }
 
-.grid-cell-beat:hover {
-  background: #484848;
-}
-
-.note-block {
-  width: 100%;
-  height: 100%;
+.note {
+  position: absolute;
+  width: calc(100% - 8px);
+  left: 4px;
   border-radius: 4px;
-  transition: all 0.3s;
+  color: white;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  font-size: 12px;
+  cursor: move;
+  user-select: none;
+  transition: background-color 0.2s;
 }
 
-.note-label {
-  color: rgba(255, 255, 255, 0.9);
-  font-size: 0.8rem;
-  font-weight: bold;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+.note.is-falling {
+  transition: top 0.1s linear;
 }
 
 .scale-notes {
   display: grid;
+  grid-template-columns: repeat(14, 1fr);
   gap: 1px;
-  padding: 8px;
-  margin-top: 16px;
+  padding: 8px 0;
+  background: #2D2D2D;
 }
 
 .scale-note-chip {
