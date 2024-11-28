@@ -31,25 +31,31 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
-import { useStore } from 'vuex'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { useMusicStore } from '@/stores/music'
 
-const store = useStore()
+const musicStore = useMusicStore()
 const activeNotes = ref(new Set())
 
 const availableScales = [
-  { title: 'C Major', value: ['C', 'D', 'E', 'F', 'G', 'A', 'B'] },
-  { title: 'G Major', value: ['G', 'A', 'B', 'C', 'D', 'E', 'F#'] },
-  { title: 'A Minor', value: ['A', 'B', 'C', 'D', 'E', 'F', 'G'] },
-  { title: 'E Minor', value: ['E', 'F#', 'G', 'A', 'B', 'C', 'D'] }
+  ['C', 'D', 'E', 'F', 'G', 'A', 'B'],
+  ['G', 'A', 'B', 'C', 'D', 'E', 'F#'],
+  ['F', 'G', 'A', 'Bb', 'C', 'D', 'E'],
+  ['D', 'E', 'F#', 'G', 'A', 'B', 'C#']
 ]
 
-const selectedScale = ref(availableScales[0])
-
-const currentScale = computed(() => store.state.currentScale)
+const currentScale = computed(() => musicStore.currentScale)
+const selectedScale = computed({
+  get() {
+    return musicStore.currentScale
+  },
+  set(value) {
+    musicStore.setScale(value)
+  }
+})
 
 const updateScale = (scale) => {
-  store.commit('setScale', scale.value)
+  musicStore.setScale(scale)
 }
 
 const isNoteActive = (note) => activeNotes.value.has(note)

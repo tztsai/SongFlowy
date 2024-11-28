@@ -36,87 +36,61 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, watch } from 'vue'
-import { useStore } from 'vuex'
+import { ref, onMounted, watch } from 'vue'
+import { useMusicStore } from '@/stores/music'
 
-const store = useStore()
+const musicStore = useMusicStore()
 const trackContainer = ref(null)
 const visibleNotes = ref([])
-const scrollSpeed = 0.5
-let animationFrame = null
-
-const colors = ['blue', 'green', 'red', 'magenta', 'lime', 'brown', 'pink', 'gold', 'navy']
+const noteColors = ['#FF5733', '#33FF57', '#3357FF', '#FF33F5']
 
 const createNote = (name, position) => {
-  const pitchMap = {
-    'C': 15,
-    'D': 25,
-    'E': 35,
-    'F': 45,
-    'G': 55,
-    'A': 65,
-    'B': 75
-  }
-  
   return {
     name,
-    position,
-    pitch: pitchMap[name],
-    color: colors[Math.floor(Math.random() * colors.length)],
-    active: false
+    position: position,
+    pitch: Math.random() * 80 + 10,
+    color: noteColors[Math.floor(Math.random() * noteColors.length)],
+    active: true
   }
 }
 
 const updateNotes = () => {
-  if (!store.state.isPlaying) return
-  
-  visibleNotes.value = visibleNotes.value.map(note => ({
-    ...note,
-    position: note.position + scrollSpeed
-  })).filter(note => note.position < window.innerHeight)
-
-  if (Math.random() < 0.02) {
-    const scale = store.state.currentScale
-    const randomNote = scale[Math.floor(Math.random() * scale.length)]
-    visibleNotes.value.push(createNote(randomNote, 0))
+  if (musicStore.isPlaying) {
+    const newNote = createNote(
+      musicStore.currentChord,
+      Math.random() * 80 + 10
+    )
+    visibleNotes.value.push(newNote)
+    setTimeout(() => {
+      newNote.active = false
+      setTimeout(() => {
+        const index = visibleNotes.value.indexOf(newNote)
+        if (index > -1) {
+          visibleNotes.value.splice(index, 1)
+        }
+      }, 500)
+    }, 2000)
+    setTimeout(updateNotes, (60000 / musicStore.bpm))
   }
-
-  animationFrame = requestAnimationFrame(updateNotes)
 }
 
-watch(() => store.state.isPlaying, (newValue) => {
+watch(() => musicStore.isPlaying, (newValue) => {
   if (newValue) {
     visibleNotes.value = []
     updateNotes()
-  } else {
-    cancelAnimationFrame(animationFrame)
   }
 })
+
+const handleKeyPress = (event) => {
+  if (event.code === 'Space') {
+    event.preventDefault()
+    musicStore.setIsPlaying(!musicStore.isPlaying)
+  }
+}
 
 onMounted(() => {
   window.addEventListener('keydown', handleKeyPress)
 })
-
-onUnmounted(() => {
-  window.removeEventListener('keydown', handleKeyPress)
-  cancelAnimationFrame(animationFrame)
-})
-
-const handleKeyPress = (event) => {
-  const key = event.key.toUpperCase()
-  if (store.state.currentScale.includes(key)) {
-    const note = visibleNotes.value.find(n => 
-      n.name === key && 
-      !n.active && 
-      n.position > window.innerHeight - 150 && 
-      n.position < window.innerHeight - 50
-    )
-    if (note) {
-      note.active = true
-      // TODO: Add scoring logic here
-    }
-  }
-}
 </script>
 
 <style scoped>

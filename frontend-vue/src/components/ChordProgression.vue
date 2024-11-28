@@ -34,9 +34,9 @@
 
 <script setup>
 import { ref, computed } from 'vue'
-import { useStore } from 'vuex'
+import { useMusicStore } from '@/stores/music'
 
-const store = useStore()
+const musicStore = useMusicStore()
 const customChord = ref('')
 
 const commonChords = [
@@ -45,8 +45,12 @@ const commonChords = [
 ]
 
 const currentChord = computed({
-  get: () => store.state.currentChord,
-  set: (value) => store.commit('setCurrentChord', value)
+  get() {
+    return musicStore.currentChord
+  },
+  set(value) {
+    musicStore.setCurrentChord(value)
+  }
 })
 
 const selectChord = (chord) => {
@@ -55,7 +59,7 @@ const selectChord = (chord) => {
 
 const addCustomChord = () => {
   if (customChord.value.trim()) {
-    selectChord(customChord.value.trim())
+    currentChord.value = customChord.value
     customChord.value = ''
   }
 }

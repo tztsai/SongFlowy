@@ -29,23 +29,33 @@
 
 <script setup>
 import { ref, computed } from 'vue'
-import { useStore } from 'vuex'
+import { useMusicStore } from '@/stores/music'
 
-const store = useStore()
+const musicStore = useMusicStore()
+
 const bpm = computed({
-  get: () => store.state.bpm,
-  set: (value) => store.commit('setBpm', value)
+  get() {
+    return musicStore.bpm
+  },
+  set(value) {
+    musicStore.setBpm(value)
+  }
 })
+
 const isPlaying = computed({
-  get: () => store.state.isPlaying,
-  set: (value) => store.commit('setIsPlaying', value)
+  get() {
+    return musicStore.isPlaying
+  },
+  set(value) {
+    musicStore.setIsPlaying(value)
+  }
 })
 
 const updateBpm = (value) => {
-  store.commit('setBpm', value)
+  musicStore.setBpm(value)
 }
 
 const togglePlay = () => {
-  store.commit('setIsPlaying', !isPlaying.value)
+  musicStore.setIsPlaying(!musicStore.isPlaying)
 }
 </script>
