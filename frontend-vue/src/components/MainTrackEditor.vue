@@ -197,14 +197,23 @@ function playNote(noteName) {
   oscillator.stop(audioContext.value.currentTime + 0.5)
 }
 
+function handleKeyPress(event) {
+  if (event.code === 'Space') {
+    event.preventDefault() // Prevent page scrolling
+    togglePlay()
+  }
+}
+
 onMounted(() => {
   audioContext.value = new (window.AudioContext || window.webkitAudioContext)()
+  window.addEventListener('keydown', handleKeyPress)
 })
 
 onUnmounted(() => {
   if (animationFrame) {
     cancelAnimationFrame(animationFrame)
   }
+  window.removeEventListener('keydown', handleKeyPress)
 })
 </script>
 
