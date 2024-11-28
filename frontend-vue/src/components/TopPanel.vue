@@ -1,26 +1,24 @@
 <template>
   <v-card>
-    <v-card-title>Controls</v-card-title>
     <v-card-text>
-      <v-row>
-        <v-col cols="12">
+      <v-row align="center" no-gutters>
+        <v-col cols="10">
           <v-slider
             v-model="bpm"
-            :min="60"
+            :min="30"
             :max="180"
             label="BPM"
             @update:modelValue="updateBpm"
-          ></v-slider>
+            class="mx-2"
+          />
         </v-col>
-      </v-row>
-      <v-row>
-        <v-col cols="12" class="d-flex justify-center">
+        <v-col cols="2" class="d-flex justify-center">
           <v-btn
             :color="isPlaying ? 'error' : 'success'"
             @click="togglePlay"
-          >
-            {{ isPlaying ? 'Stop' : 'Play' }}
-          </v-btn>
+            :icon="isPlaying ? 'mdi-pause' : 'mdi-play'"
+            size="large"
+          />
         </v-col>
       </v-row>
     </v-card-text>

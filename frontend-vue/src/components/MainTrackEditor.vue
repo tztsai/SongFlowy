@@ -1,22 +1,11 @@
 <template>
   <v-card class="main-track-editor" elevation="3">
-    <v-card-title class="title-container">
-      <v-btn
-        :prepend-icon="isPlaying ? 'mdi-pause' : 'mdi-play'"
-        :color="isPlaying ? 'error' : 'primary'"
-        @click="togglePlay"
-      >
-        {{ isPlaying ? 'Pause' : 'Play' }}
-      </v-btn>
-    </v-card-title>
-
     <v-card-text class="track-container pa-0">
       <!-- Track Columns -->
       <div class="track-columns">
         <div v-for="col in cols" :key="col" class="track-column" @click="addNote($event, col)">
           <div v-for="note in getNotesInColumn(col)" :key="note.id" class="note" 
             :style="getNoteStyle(note)"
-            :class="{ 'is-falling': isPlaying }"
             @mousedown="startDragging(note, $event)"
             @mouseup="stopDragging"
             @mousemove="handleDrag($event)">
@@ -36,13 +25,13 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useMusicStore } from '@/stores/music'
 
 const musicStore = useMusicStore()
-const isPlaying = computed(() => musicStore.isPlaying)
 const cols = ref(14)
 const scaleNotes = computed(() => musicStore.currentScale)
+const isPlaying = computed(() => musicStore.isPlaying)
 
 const noteColors = {
   'D': '#8100FF',
@@ -79,6 +68,7 @@ const notes = ref([])
 let nextNoteId = 0
 let draggedNote = null
 let dragStartY = 0
+let animationFrame = null
 
 function addNote(event, col) {
   if (draggedNote) return
@@ -125,50 +115,35 @@ function handleDrag(event) {
   event.preventDefault()
 }
 
-function togglePlay() {
-  if (isPlaying.value) {
-    stopPlaying()
-  } else {
-    startPlaying()
+function updateNotes() {
+  if (!isPlaying.value) {
+    cancelAnimationFrame(animationFrame)
+    return
   }
-}
 
-function startPlaying() {
-  musicStore.setIsPlaying(true)
-  startNoteAnimation()
-}
+  const containerHeight = document.querySelector('.track-columns').clientHeight
+  notes.value.forEach(note => {
+    const oldY = note.y
+    note.y += (musicStore.bpm / 60) * 2
 
-function stopPlaying() {
-  musicStore.setIsPlaying(false)
-}
-
-let animationFrame = null
-
-function startNoteAnimation() {
-  const animate = () => {
-    if (!isPlaying.value) {
-      cancelAnimationFrame(animationFrame)
-      return
+    if (oldY < containerHeight && note.y >= containerHeight) {
+      playNote(note.noteName)
+      note.y = 0
     }
+  })
 
-    const containerHeight = document.querySelector('.track-columns').clientHeight
-
-    notes.value.forEach(note => {
-      const oldY = note.y
-      note.y += (musicStore.bpm / 60) * 2
-
-      // Check if note just crossed the bottom threshold
-      if (oldY < containerHeight && note.y >= containerHeight) {
-        playNote(note.noteName)
-        note.y = 0
-      }
-    })
-
-    animationFrame = requestAnimationFrame(animate)
-  }
-
-  animationFrame = requestAnimationFrame(animate)
+  animationFrame = requestAnimationFrame(updateNotes)
 }
+
+// Watch for play state changes
+watch(isPlaying, (newValue) => {
+  console.log('Play state changed:', newValue)
+  if (newValue) {
+    updateNotes()
+  } else if (animationFrame) {
+    cancelAnimationFrame(animationFrame)
+  }
+})
 
 function playNote(noteName) {
   if (!audioContext.value) return
@@ -197,23 +172,14 @@ function playNote(noteName) {
   oscillator.stop(audioContext.value.currentTime + 0.5)
 }
 
-function handleKeyPress(event) {
-  if (event.code === 'Space') {
-    event.preventDefault() // Prevent page scrolling
-    togglePlay()
-  }
-}
-
 onMounted(() => {
   audioContext.value = new (window.AudioContext || window.webkitAudioContext)()
-  window.addEventListener('keydown', handleKeyPress)
 })
 
 onUnmounted(() => {
   if (animationFrame) {
     cancelAnimationFrame(animationFrame)
   }
-  window.removeEventListener('keydown', handleKeyPress)
 })
 </script>
 
@@ -288,13 +254,5 @@ onUnmounted(() => {
 .scale-note-chip {
   margin: 0;
   justify-self: center;
-}
-
-.title-container {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  padding: 4px;
-  width: 100%;
 }
 </style>
