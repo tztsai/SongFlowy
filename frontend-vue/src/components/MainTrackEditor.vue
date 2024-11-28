@@ -59,6 +59,22 @@ const noteColors = {
   'D#': '#FF0000'
 }
 
+const audioContext = ref(null)
+const noteFrequencies = {
+  'C': 261.63,
+  'C#': 277.18,
+  'D': 293.66,
+  'D#': 311.13,
+  'E': 329.63,
+  'F': 349.23,
+  'F#': 369.99,
+  'G': 392.00,
+  'G#': 415.30,
+  'A': 440.00,
+  'A#': 466.16,
+  'B': 493.88
+}
+
 const notes = ref([])
 let nextNoteId = 0
 let draggedNote = null
@@ -135,9 +151,15 @@ function startNoteAnimation() {
       return
     }
 
+    const containerHeight = document.querySelector('.track-columns').clientHeight
+
     notes.value.forEach(note => {
+      const oldY = note.y
       note.y += (musicStore.bpm / 60) * 2
-      if (note.y > window.innerHeight) {
+
+      // Check if note just crossed the bottom threshold
+      if (oldY < containerHeight && note.y >= containerHeight) {
+        playNote(note.noteName)
         note.y = 0
       }
     })
@@ -147,6 +169,37 @@ function startNoteAnimation() {
 
   animationFrame = requestAnimationFrame(animate)
 }
+
+function playNote(noteName) {
+  if (!audioContext.value) return
+
+  const oscillator = audioContext.value.createOscillator()
+  const gainNode = audioContext.value.createGain()
+  
+  // Set note frequency
+  const baseFreq = noteFrequencies[noteName.replace(/\d+/, '')] || 440
+  oscillator.frequency.setValueAtTime(baseFreq, audioContext.value.currentTime)
+  
+  // Set waveform
+  oscillator.type = 'sine'
+  
+  // Configure gain (volume envelope)
+  gainNode.gain.setValueAtTime(0, audioContext.value.currentTime)
+  gainNode.gain.linearRampToValueAtTime(0.5, audioContext.value.currentTime + 0.01)
+  gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.value.currentTime + 0.5)
+  
+  // Connect nodes
+  oscillator.connect(gainNode)
+  gainNode.connect(audioContext.value.destination)
+  
+  // Start and stop
+  oscillator.start()
+  oscillator.stop(audioContext.value.currentTime + 0.5)
+}
+
+onMounted(() => {
+  audioContext.value = new (window.AudioContext || window.webkitAudioContext)()
+})
 
 onUnmounted(() => {
   if (animationFrame) {
