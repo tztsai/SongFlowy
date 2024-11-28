@@ -1,18 +1,13 @@
 <template>
   <v-card class="main-track-editor" elevation="3">
-    <v-card-title class="d-flex align-center">
-      <v-chip :color="isPlaying ? 'success' : 'primary'" class="ml-2">
-        {{ isPlaying ? 'Playing' : 'Paused' }}
-      </v-chip>
-      <v-spacer></v-spacer>
-      <v-btn-group>
-        <v-btn prepend-icon="mdi-play" color="primary" @click="startPlaying" :disabled="isPlaying">
-          Play
-        </v-btn>
-        <v-btn prepend-icon="mdi-stop" color="error" @click="stopPlaying" :disabled="!isPlaying">
-          Stop
-        </v-btn>
-      </v-btn-group>
+    <v-card-title class="title-container">
+      <v-btn
+        :prepend-icon="isPlaying ? 'mdi-pause' : 'mdi-play'"
+        :color="isPlaying ? 'error' : 'primary'"
+        @click="togglePlay"
+      >
+        {{ isPlaying ? 'Pause' : 'Play' }}
+      </v-btn>
     </v-card-title>
 
     <v-card-text class="track-container pa-0">
@@ -112,6 +107,14 @@ function handleDrag(event) {
   const newY = event.clientY - dragStartY
   draggedNote.y = Math.max(0, newY)
   event.preventDefault()
+}
+
+function togglePlay() {
+  if (isPlaying.value) {
+    stopPlaying()
+  } else {
+    startPlaying()
+  }
 }
 
 function startPlaying() {
@@ -221,7 +224,15 @@ onUnmounted(() => {
 }
 
 .scale-note-chip {
-  margin: 0 !important;
+  margin: 0;
   justify-self: center;
+}
+
+.title-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 4px;
+  width: 100%;
 }
 </style>

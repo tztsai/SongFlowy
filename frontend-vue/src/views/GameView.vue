@@ -5,10 +5,6 @@ import MainTrackEditor from '@/components/MainTrackEditor.vue'
 
 <template>
   <v-app>
-    <v-app-bar app color="primary" dark>
-      <v-app-bar-title>Perfect Song Learning</v-app-bar-title>
-    </v-app-bar>
-
     <v-main>
       <v-container fluid>
         <v-row>
