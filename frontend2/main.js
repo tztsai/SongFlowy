@@ -1,8 +1,46 @@
-import Vue from "vue";
-import App from "./App.vue";
+import { createApp } from 'vue'
+import App from './App.vue'
+import { createStore } from 'vuex'
+import 'vuetify/styles'
+import { createVuetify } from 'vuetify'
+import * as components from 'vuetify/components'
+import * as directives from 'vuetify/directives'
+import '@mdi/font/css/materialdesignicons.css'
 
-Vue.config.productionTip = false;
+const store = createStore({
+  state() {
+    return {
+      currentScale: ['G', 'F', 'E', 'D', 'C', 'B', 'A'],
+      bpm: 80,
+      isPlaying: true,
+      currentChord: 'Am'
+    }
+  },
+  mutations: {
+    setScale(state, scale) {
+      state.currentScale = scale
+    },
+    setBpm(state, bpm) {
+      state.bpm = bpm
+    },
+    setIsPlaying(state, isPlaying) {
+      state.isPlaying = isPlaying
+    },
+    setCurrentChord(state, chord) {
+      state.currentChord = chord
+    }
+  }
+})
 
-new Vue({
-  render: (h) => h(App),
-}).$mount("#app");
+const vuetify = createVuetify({
+  components,
+  directives,
+  theme: {
+    defaultTheme: 'dark'
+  }
+})
+
+const app = createApp(App)
+app.use(store)
+app.use(vuetify)
+app.mount('#app')

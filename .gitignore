@@ -163,4 +163,5 @@ cython_debug/
 
 uploads/
 package-lock.json
+node_modules/
 *.tmp
