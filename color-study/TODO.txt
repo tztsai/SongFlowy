@@ -1,0 +1,6 @@
+- freq <=> RGB
+- study https://tobiacavalli.com/blog/cie-colors-python/#the-cie-colorimetry-system
+- light spectrum and color wheel
+- 从紫色开始的可见光谱十二平均律
+- light chord and color harmony 
+- 单色光组成的泛音列和音色
