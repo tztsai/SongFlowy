@@ -56,7 +56,8 @@ def upload_audio():
         tempo = librosa.beat.beat_track(y=y, sr=sr)[0]
         if isinstance(tempo, np.ndarray):
             tempo = float(tempo[0])
-            
+        logging.info(f"Tempo detected: {tempo}")
+        
         # Get the note sequence using pitch detection
         pitches, magnitudes = librosa.piptrack(y=y, sr=sr)
         notes = []
@@ -73,10 +74,11 @@ def upload_audio():
             note = note.replace('♯', '#')
             score.append(music21.note.Note(note))
         key = score.analyze('key')
+        logging.info(f"Key detected: {key}")
         
         # Save processed audio
         processed_path = os.path.join(UPLOAD_FOLDER, 'processed_' + file.filename)
-        sf.write(processed_path, y, sr)
+        # sf.write(processed_path, y, sr)
         
         logging.info("Analysis completed.")
         
