@@ -3,12 +3,30 @@
     <v-card-title>Track Editor</v-card-title>
     <v-card-text>
       <div class="track-container" ref="trackContainer">
+        <div class="grid-container">
+          <div 
+            v-for="i in 13" 
+            :key="`vline-${i}`" 
+            class="vertical-line"
+            :style="{ left: `${(i * 5) + 10}%` }"
+          ></div>
+          <div 
+            v-for="i in 10" 
+            :key="`hline-${i}`" 
+            class="horizontal-line"
+            :style="{ top: `${(i * 8) + 10}%` }"
+          ></div>
+        </div>
         <div 
-          class="note-line"
           v-for="(note, index) in visibleNotes" 
           :key="index"
-          :style="{ top: `${note.position}px` }"
-          :class="{ 'active': note.active }"
+          class="note-block"
+          :style="{ 
+            top: `${note.position}%`,
+            left: `${note.pitch}%`,
+            backgroundColor: note.color,
+            opacity: note.active ? 1 : 0.7
+          }"
         >
           {{ note.name }}
         </div>
@@ -24,14 +42,30 @@ import { useStore } from 'vuex'
 const store = useStore()
 const trackContainer = ref(null)
 const visibleNotes = ref([])
-const scrollSpeed = 2
+const scrollSpeed = 0.5
 let animationFrame = null
 
-const createNote = (name, position) => ({
-  name,
-  position,
-  active: false
-})
+const colors = ['blue', 'green', 'red', 'magenta', 'lime', 'brown', 'pink', 'gold', 'navy']
+
+const createNote = (name, position) => {
+  const pitchMap = {
+    'C': 15,
+    'D': 25,
+    'E': 35,
+    'F': 45,
+    'G': 55,
+    'A': 65,
+    'B': 75
+  }
+  
+  return {
+    name,
+    position,
+    pitch: pitchMap[name],
+    color: colors[Math.floor(Math.random() * colors.length)],
+    active: false
+  }
+}
 
 const updateNotes = () => {
   if (!store.state.isPlaying) return
@@ -95,9 +129,26 @@ const handleKeyPress = (event) => {
 .track-container {
   height: 100%;
   position: relative;
+  background: white;
 }
 
-.note-line {
+.grid-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.vertical-line {
+  position: absolute;
+  top: 0;
+  width: 1px;
+  height: 100%;
+  background-color: lightgray;
+}
+
+.horizontal-line {
   position: absolute;
   left: 50%;
   transform: translateX(-50%);

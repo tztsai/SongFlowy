@@ -1,6 +1,9 @@
 import { createApp } from 'vue'
+import { createPinia } from 'pinia'
+import router from './router'
 import App from './App.vue'
 import { createStore } from 'vuex'
+import './assets/main.css'
 import 'vuetify/styles'
 import { createVuetify } from 'vuetify'
 import * as components from 'vuetify/components'
@@ -12,7 +15,7 @@ const store = createStore({
     return {
       currentScale: ['G', 'F', 'E', 'D', 'C', 'B', 'A'],
       bpm: 80,
-      isPlaying: true,
+      isPlaying: false,
       currentChord: 'Am'
     }
   },
@@ -41,6 +44,8 @@ const vuetify = createVuetify({
 })
 
 const app = createApp(App)
+app.use(createPinia())
+app.use(router)
 app.use(store)
 app.use(vuetify)
 app.mount('#app')
