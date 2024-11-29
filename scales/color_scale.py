@@ -50,7 +50,7 @@ def wavelength_to_rgb(wavelength_nm):
 def get_note_colors():
     """Get RGB colors for 12 notes starting from D4."""
 
-    notes = ['D', 'C#', 'C', 'B', 'A#', 'A', 'G#', 'G', 'F#', 'F', 'E', 'D#']
+    notes = ['D', 'd', 'C', 'B', 'b', 'A', 'a', 'G', 'g', 'F', 'E', 'e']
 
     # colors = wavelength_to_rgb(np.linspace(440, 622, 12))
     colors = wavelength_to_rgb(np.logspace(np.log10(440), np.log10(622), 12))

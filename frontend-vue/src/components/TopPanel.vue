@@ -2,6 +2,16 @@
   <v-card class="top-panel">
     <v-card-text class="py-2">
       <v-row>
+        <v-col cols="3">
+          <v-select
+            v-model="currentKey"
+            :items="keySignatures"
+            label="Key"
+            density="compact"
+            hide-details
+            @update:modelValue="updateKey"
+          />
+        </v-col>
         <v-col cols="4">
           <v-slider
             v-model="bpm"
@@ -57,6 +67,18 @@ const fileInput = ref(null)
 const isUploading = ref(false)
 const uploadError = ref(null)
 
+const keySignatures = [
+  'C', 'G', 'D', 'A', 'E', 'B', 
+  'F', 'b', 'e', 'a', 'd', 'g',
+  'Am', 'Em', 'Bm', 'gm', 'dm', 'am', 
+  'em', 'Dm', 'Gm', 'Cm', 'Fm', 'bm'
+]
+
+const currentKey = computed({
+  get: () => musicStore.getCurrentKey,
+  set: (value) => musicStore.setKey(value)
+})
+
 const bpm = computed({
   get: () => musicStore.bpm,
   set: (value) => musicStore.setBpm(value)
@@ -66,6 +88,10 @@ const isPlaying = computed(() => musicStore.isPlaying)
 
 function updateBpm(value) {
   musicStore.setBpm(value)
+}
+
+function updateKey(value) {
+  musicStore.setKey(value)
 }
 
 function togglePlay() {
@@ -103,8 +129,15 @@ async function handleFileUpload(event) {
       musicStore.setBpm(data.tempo)
     }
     if (data.key) {
-      // TODO: Update key in store when implemented
-      console.log('Detected key:', data.key)
+      musicStore.setKey(data.key)
+    }
+    if (data.notes) {
+      musicStore.setNotes(data.notes.map((note, index) => ({
+        id: `note-${index}`,
+        noteName: note,
+        column: index % 14,  // Distribute notes across columns
+        row: 0  // Place all notes in the first row initially
+      })))
     }
   } catch (error) {
     console.error('Upload error:', error)

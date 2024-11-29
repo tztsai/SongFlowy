@@ -16,8 +16,13 @@
 
       <!-- Scale Notes at the Bottom -->
       <div class="scale-notes">
-        <v-chip v-for="col in cols" :key="col" :color="noteColors[scaleNotes[col % scaleNotes.length]]" class="scale-note-chip">
-          {{ scaleNotes[col % scaleNotes.length] }}
+        <v-chip 
+          v-for="col in cols" 
+          :key="col" 
+          :color="noteColors[getScaleNoteForColumn(col)]" 
+          class="scale-note-chip"
+        >
+          {{ getScaleNoteForColumn(col) }}
         </v-chip>
       </div>
     </v-card-text>
@@ -26,45 +31,45 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
-import { useMusicStore } from '@/stores/music'
+import { useMusicStore, scaleMap } from '@/stores/music'
 
 const musicStore = useMusicStore()
 const cols = ref(14)
-const scaleNotes = computed(() => musicStore.currentScale)
+const scaleNotes = computed(() => scaleMap[musicStore.currentKey])
 const isPlaying = computed(() => musicStore.isPlaying)
+const notes = computed(() => musicStore.getNotes)
 
 const noteColors = {
   'D': '#8100FF',
-  'C#': '#5900FF',
+  'd': '#5900FF',
   'C': '#001CFF',
   'B': '#008BD6',
-  'A#': '#00C986',
+  'b': '#00C986',
   'A': '#00FF00',
-  'G#': '#00FF00',
+  'a': '#00FF00',
   'G': '#00FF00',
-  'F#': '#E0FF00',
+  'g': '#E0FF00',
   'F': '#FFCD00',
   'E': '#FF5600',
-  'D#': '#FF0000'
+  'e': '#FF0000'
 }
 
 const audioContext = ref(null)
 const noteFrequencies = {
   'C': 261.63,
-  'C#': 277.18,
+  'd': 277.18,
   'D': 293.66,
-  'D#': 311.13,
+  'e': 311.13,
   'E': 329.63,
   'F': 349.23,
-  'F#': 369.99,
+  'g': 369.99,
   'G': 392.00,
-  'G#': 415.30,
+  'a': 415.30,
   'A': 440.00,
-  'A#': 466.16,
+  'b': 466.16,
   'B': 493.88
 }
 
-const notes = ref([])
 let nextNoteId = 0
 let draggedNote = null
 let dragStartY = 0
@@ -76,9 +81,9 @@ function addNote(event, col) {
   const y = event.clientY - rect.top
   const noteName = scaleNotes.value[col % scaleNotes.value.length]
   
-  notes.value.push({
+  musicStore.addNote({
     id: nextNoteId++,
-    col,
+    column: col,
     y,
     length: 60,
     noteName,
@@ -87,7 +92,7 @@ function addNote(event, col) {
 }
 
 function getNotesInColumn(col) {
-  return notes.value.filter(note => note.col === col)
+  return notes.value.filter(note => note.column === col)
 }
 
 function getNoteStyle(note) {
@@ -113,6 +118,12 @@ function handleDrag(event) {
   const newY = event.clientY - dragStartY
   draggedNote.y = Math.max(0, newY)
   event.preventDefault()
+}
+
+function getScaleNoteForColumn(col) {
+  const scale = scaleNotes.value
+  if (!scale) return ''
+  return scale[(col - 1) % scale.length]
 }
 
 function updateNotes() {

@@ -76,16 +76,13 @@ def upload_audio():
         key = score.analyze('key')
         logging.info(f"Key detected: {key}")
         
-        # Save processed audio
-        processed_path = os.path.join(UPLOAD_FOLDER, 'processed_' + file.filename)
-        # sf.write(processed_path, y, sr)
-        
         logging.info("Analysis completed.")
         
         return jsonify({
             'tempo': tempo,
             'key': str(key),
-            'processed_path': processed_path
+            'notes': notes,
+            'filepath': filepath
         })
         
     except Exception as e:
@@ -98,16 +95,9 @@ def analyze_pitch():
     if 'file' not in request.files:
         return jsonify({'error': 'No file provided'}), 400
     
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({'error': 'No file selected'}), 400
+    filepath = request.files['path']
 
     try:
-        # Save the uploaded file
-        filepath = os.path.join(UPLOAD_FOLDER, file.filename)
-        file.save(filepath)
-        logging.info(f"File uploaded for pitch analysis: {file.filename}")
-        
         # Load the audio file
         y, sr = librosa.load(filepath)
         
