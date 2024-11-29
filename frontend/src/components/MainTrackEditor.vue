@@ -70,6 +70,27 @@ const noteFrequencies = {
   'B': 493.88
 }
 
+const keyboardMap = {
+  'a': 0,  // 1
+  'w': 1,  // 2b
+  's': 2,  // 2
+  'e': 3,  // 3b
+  'd': 4,  // 3
+  'f': 5,  // 4
+  't': 6,  // 5b
+  'g': 7,  // 5
+  'y': 8,  // 6b
+  'h': 9,  // 6
+  'u': 10, // 7b
+  'j': 11, // 7
+  'k': 12, // 8
+  'o': 13, // 9b
+  'l': 14, // 9
+  'p': 15, // 10b
+  ';': 16, // 10
+  "'": 17  // 11
+}
+
 let nextNoteId = 0
 let draggedNote = null
 let dragStartY = 0
@@ -151,6 +172,20 @@ function updateNotes() {
   animationFrame = requestAnimationFrame(updateNotes)
 }
 
+function handleKeyPress(event) {
+  if (event.repeat) return // Prevent key repeat
+  const key = event.key.toLowerCase()
+  const notes = 'aAbBCdDeEFgG'
+  if (key in keyboardMap) {
+    event.preventDefault()
+    let i = keyboardMap[key]
+    let j = notes.indexOf(scaleNotes.value[0])
+    let k = (i + j) % notes.length
+    let octave = Math.floor(i / notes.length) + 4
+    playNote(notes[k] + octave)
+  }
+}
+
 // Watch for play state changes
 watch(isPlaying, (newValue) => {
   console.log('Play state changed:', newValue)
@@ -168,8 +203,11 @@ function playNote(noteName) {
   const gainNode = audioContext.value.createGain()
   
   // Set note frequency
-  const baseFreq = noteFrequencies[noteName.replace(/\d+/, '')] || 440
-  oscillator.frequency.setValueAtTime(baseFreq, audioContext.value.currentTime)
+  let m = noteName.match(/\d+$/);
+  const octave = m ? parseInt(m[0]) : 4;
+  const baseFreq = noteFrequencies[noteName.replace(/\d+/, '')]
+  const octaveFreq = baseFreq * Math.pow(2, octave - 4)
+  oscillator.frequency.setValueAtTime(octaveFreq, audioContext.value.currentTime)
   
   // Set waveform
   oscillator.type = 'sine'
@@ -190,12 +228,14 @@ function playNote(noteName) {
 
 onMounted(() => {
   audioContext.value = new (window.AudioContext || window.webkitAudioContext)()
+  window.addEventListener('keydown', handleKeyPress)
 })
 
 onUnmounted(() => {
   if (animationFrame) {
     cancelAnimationFrame(animationFrame)
   }
+  window.removeEventListener('keydown', handleKeyPress)
 })
 </script>
 
