@@ -282,25 +282,14 @@ onUnmounted(() => {
 .main-track-editor {
   background: #1E1E1E;
   border-radius: 8px;
-  height: calc(100vh - 112px);
   display: flex;
   flex-direction: column;
-}
-
-.track-container {
-  flex: 1;
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
 }
 
 .track-columns-container {
   flex: 1;
-  overflow-y: auto;
   position: relative;
   transform: scaleY(-1);
-  /* Flip the container */
 }
 
 .track-columns {
@@ -309,9 +298,8 @@ onUnmounted(() => {
   gap: 1px;
   background: #2D2D2D;
   padding: 1px;
+  height: calc(100vh - 160px);
   position: relative;
-  min-height: 2400px;
-  /* Gives enough space for scrolling */
 }
 
 .track-column {
