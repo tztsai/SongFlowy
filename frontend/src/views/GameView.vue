@@ -9,7 +9,7 @@ import MainTrackEditor from '@/components/MainTrackEditor.vue'
     <v-main>
       <v-container fluid>
         <v-row>
-          <v-col cols="12" lg="9" class="mx-auto">
+          <v-col cols="12" lg="10" class="mx-auto">
             <top-panel />
           </v-col>
         </v-row>

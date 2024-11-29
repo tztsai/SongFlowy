@@ -7,7 +7,7 @@
           <div v-for="note in getNotesInColumn(col)" :key="note.id" class="note" 
             :style="getNoteStyle(note)"
             @mousedown="startDragging(note, $event)"
-            @mouseup="stopDragging"
+            @mouseup="stopDragging($event)"
             @mousemove="handleDrag($event)">
             {{ note.noteName }}
           </div>
@@ -33,8 +33,9 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useMusicStore, scaleMap } from '@/stores/music'
 
-const musicStore = useMusicStore()
 const cols = ref(14)
+const audioContext = ref(null)
+const musicStore = useMusicStore()
 const scaleNotes = computed(() => scaleMap[musicStore.currentKey])
 const isPlaying = computed(() => musicStore.isPlaying)
 const notes = computed(() => musicStore.getNotes)
@@ -54,7 +55,6 @@ const noteColors = {
   'e': '#FF0000'
 }
 
-const audioContext = ref(null)
 const noteFrequencies = {
   'C': 261.63,
   'd': 277.18,
@@ -81,14 +81,16 @@ function addNote(event, col) {
   const y = event.clientY - rect.top
   const noteName = scaleNotes.value[col % scaleNotes.value.length]
   
-  musicStore.addNote({
+  const newNote = {
     id: nextNoteId++,
     column: col,
     y,
     length: 60,
     noteName,
     color: noteColors[noteName]
-  })
+  }
+  
+  musicStore.addNote(newNote)
 }
 
 function getNotesInColumn(col) {
@@ -109,8 +111,11 @@ function startDragging(note, event) {
   event.stopPropagation()
 }
 
-function stopDragging() {
-  draggedNote = null
+function stopDragging(event) {
+  event.stopPropagation()
+  setTimeout(() => {
+    draggedNote = null
+  }, 10)
 }
 
 function handleDrag(event) {
@@ -198,7 +203,7 @@ onUnmounted(() => {
 .main-track-editor {
   background: #1E1E1E;
   border-radius: 8px;
-  height: calc(100vh - 64px);
+  height: calc(100vh - 112px);
   display: flex;
   flex-direction: column;
 }

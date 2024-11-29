@@ -1,8 +1,8 @@
 <template>
   <v-card class="top-panel">
-    <v-card-text class="py-2">
+    <v-card-text>
       <v-row>
-        <v-col cols="3">
+        <v-col cols="2">
           <v-select
             v-model="currentKey"
             :items="keySignatures"
@@ -17,27 +17,30 @@
             v-model="bpm"
             :min="30"
             :max="180"
-            label="BPM"
             @update:modelValue="updateBpm"
-            class="mb-0"
+            class="align-center"
             density="compact"
             hide-details
-          />
+          >
+            <template v-slot:append>
+              <div class="text-caption text-medium-emphasis">{{ bpm }} BPM</div>
+            </template>
+          </v-slider>
         </v-col>
-        <v-col cols="auto">
+        <v-col cols="3">
           <v-btn
             :color="isPlaying ? 'error' : 'success'"
             @click="togglePlay"
             :icon="isPlaying ? 'mdi-pause' : 'mdi-play'"
             size="small"
-            class="mr-2"
           />
         </v-col>
-        <v-col cols="auto">
+        <v-col cols="3">
           <v-btn
             color="primary"
             prepend-icon="mdi-upload"
             size="small"
+            class="align-center"
             @click="triggerFileUpload"
             :loading="isUploading"
             :disabled="isUploading"
@@ -150,6 +153,7 @@ async function handleFileUpload(event) {
 
 const handleSpacePress = (e) => {
   if (e.code === 'Space') {
+    e.preventDefault()
     togglePlay()
   }
 }
@@ -169,5 +173,11 @@ onUnmounted(() => {
 .v-card-text {
   padding-top: 8px;
   padding-bottom: 8px;
+}
+
+.align-center {
+  align-items: center;
+  justify-content: center;
+  height: 100%;
 }
 </style>

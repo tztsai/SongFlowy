@@ -48,6 +48,9 @@ export const useMusicStore = defineStore('music', {
     setKey(key) {
       this.currentKey = key
       this.currentScale = scaleMap[key] || scaleMap['C']
+    },
+    addNote(note) {
+      this.notes.push(note)
     }
   },
 
