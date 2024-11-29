@@ -2,6 +2,9 @@
   <v-card class="top-panel">
     <v-card-text>
       <v-row>
+        <v-col cols="1">
+          <v-icon size="large" color="primary">mdi-music</v-icon>
+        </v-col>
         <v-col cols="2">
           <v-select
             v-model="currentKey"
@@ -23,11 +26,11 @@
             hide-details
           >
             <template v-slot:append>
-              <div class="text-caption text-medium-emphasis">{{ bpm }} BPM</div>
+              <div class="text-medium-emphasis">{{ bpm }} BPM</div>
             </template>
           </v-slider>
         </v-col>
-        <v-col cols="3">
+        <v-col cols="2">
           <v-btn
             :color="isPlaying ? 'error' : 'success'"
             @click="togglePlay"

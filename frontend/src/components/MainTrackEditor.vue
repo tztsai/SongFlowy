@@ -25,6 +25,7 @@
           :key="col" 
           :color="noteColors[getScaleNoteForColumn(col)]" 
           class="scale-note-chip"
+          @click="playNote(getScaleNoteForColumn(col))"
         >
           {{ getScaleNoteForColumn(col) }}
         </v-chip>
