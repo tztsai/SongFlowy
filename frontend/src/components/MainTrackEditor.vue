@@ -3,6 +3,10 @@
     <v-card-text class="track-container pa-0">
       <!-- Track Columns -->
       <div class="track-columns">
+        <!-- Bar Lines -->
+        <div v-for="bar in barLines" :key="'bar-' + bar.id" class="bar-line"
+          :style="{ top: bar.y + 'px' }">
+        </div>
         <div v-for="col in cols" :key="col" class="track-column" @click="addNote($event, col)">
           <div v-for="note in getNotesInColumn(col)" :key="note.id" class="note" 
             :style="getNoteStyle(note)"
@@ -60,6 +64,17 @@ let nextNoteId = 0
 let draggedNote = null
 let dragStartY = 0
 let animationFrame = null
+
+const barLines = ref([])
+
+function initBarLines() {
+  barLines.value = []
+  const containerHeight = document.querySelector('.track-columns')?.clientHeight || 0
+  const numBars = Math.ceil(containerHeight / 240)
+  for (let i = 0; i < numBars; i++) {
+    barLines.value.push({ y: i * 240 })
+  }
+}
 
 function addNote(event, col) {
   if (draggedNote) return
@@ -125,12 +140,23 @@ function updateNotes() {
 
   const containerHeight = document.querySelector('.track-columns').clientHeight
   notes.value.forEach(note => {
-    const oldY = note.y
+    const oldBottom = note.y + note.length
     note.y += (musicStore.bpm / 60) * 2
+    const newBottom = note.y + note.length
 
-    if (oldY < containerHeight && note.y >= containerHeight) {
+    if (oldBottom < containerHeight && newBottom >= containerHeight) {
       playNote(note.noteName)
+    }
+    if (note.y >= containerHeight) {
       note.y = 0
+    }
+  })
+
+  barLines.value.forEach(bar => {
+    const dy = (musicStore.bpm / 60) * 2
+    bar.y += dy
+    if (bar.y >= containerHeight && bar.y % 240 < dy) {
+      bar.y = 0
     }
   })
 
@@ -153,7 +179,7 @@ function playNote(note) {
   }, (note.length * 1000 / musicStore.bpm))
 }
 
-const keyboardChars = 'awsedftgyhujkolp;'
+const keyboardChars = "awsedftgyhujkolp;'"
 
 function keyboard2piano(note) {
   return keyboardChars.indexOf(note.toLowerCase()) + 48
@@ -189,6 +215,7 @@ watch(isPlaying, (newValue) => {
 onMounted(() => {
   window.addEventListener('keydown', handleKeyDown)
   window.addEventListener('keyup', handleKeyUp)
+  initBarLines()
 })
 
 onUnmounted(() => {
@@ -271,5 +298,14 @@ onUnmounted(() => {
 .scale-note-chip {
   margin: 0;
   justify-self: center;
+}
+
+.bar-line {
+  position: absolute;
+  width: 100%;
+  height: 1px;
+  background-color: rgba(255, 255, 255, 0.3);
+  pointer-events: none;
+  z-index: 1;
 }
 </style>
