@@ -12,10 +12,10 @@
   - Add interactive sheet music display
 
 ## Phase 2: Game-Like Music Learning Interface
-- [ ] Auto Scrolling Music Tab
+- [x] Auto Scrolling Music Tab
   - Implement smooth and horizontal note scrolling animation system
   - Sync scrolling with audio playback
-- [ ] Multi-Column Layout
+- [x] Multi-Column Layout
   - Chord progression display
   - Interactive music tab
   - Lyrics editor with timestamps
