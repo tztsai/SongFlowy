@@ -137,6 +137,7 @@ async function handleFileUpload(event) {
       musicStore.setKey(key)
       console.log('Set key to:', key, 'Scale:', scaleMap[key])
     }
+    // Process notes
     if (data.notes) {
       musicStore.setNotes(data.notes.map((note, index) => {
         const key = translateKey(note.noteName)
