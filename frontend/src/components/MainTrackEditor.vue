@@ -36,7 +36,7 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
-import { useMusicStore, scaleMap } from '@/stores/music'
+import { useMusicStore, scaleMap, noteColors } from '@/stores/music'
 import { Piano } from '@/sound/piano'
 
 const cols = ref(14)
@@ -45,21 +45,6 @@ const musicStore = useMusicStore()
 const scaleNotes = computed(() => scaleMap[musicStore.currentKey])
 const isPlaying = computed(() => musicStore.isPlaying)
 const notes = computed(() => musicStore.getNotes)
-
-const noteColors = {
-  'D': '#8100FF',
-  'd': '#5900FF',
-  'C': '#001CFF',
-  'B': '#008BD6',
-  'b': '#00C986',
-  'A': '#00FF00',
-  'a': '#00FF00',
-  'G': '#00FF00',
-  'g': '#E0FF00',
-  'F': '#FFCD00',
-  'E': '#FF5600',
-  'e': '#FF0000'
-}
 
 let nextNoteId = 0
 let draggedNote = null

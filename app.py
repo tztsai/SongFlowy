@@ -58,21 +58,52 @@ def upload_audio():
             tempo = float(tempo[0])
         logging.info(f"Tempo detected: {tempo}")
         
+        # Get onset frames for timing information
+        onset_frames = librosa.onset.onset_detect(y=y, sr=sr, units='frames')
+        onset_times = librosa.frames_to_time(onset_frames, sr=sr)
+        
         # Get the note sequence using pitch detection
         pitches, magnitudes = librosa.piptrack(y=y, sr=sr)
         notes = []
-        for i in range(len(pitches[0])):
-            index = magnitudes[:,i].argmax()
-            pitch = pitches[index,i]
-            if pitch > 0:  # Only include valid pitches
-                note = librosa.hz_to_note(pitch)
-                notes.append(note)
+        
+        for i in range(len(onset_frames)):
+            start_frame = onset_frames[i]
+            # Use next onset as end frame, or use the last frame if this is the last onset
+            end_frame = onset_frames[i + 1] if i < len(onset_frames) - 1 else len(pitches[0])
+            
+            # Get the predominant pitch for this note segment
+            segment_pitches = pitches[:, start_frame:end_frame]
+            segment_magnitudes = magnitudes[:, start_frame:end_frame]
+            
+            # Find the pitch with highest magnitude
+            max_magnitude_indices = segment_magnitudes.argmax(axis=0)
+            pitch_values = [segment_pitches[max_magnitude_indices[j], j] for j in range(len(max_magnitude_indices))]
+            pitch_values = [p for p in pitch_values if p > 0]  # Filter out zero pitches
+            
+            if pitch_values:
+                # Use the most common pitch in the segment
+                pitch = float(np.median(pitch_values))
+                note_name = librosa.hz_to_note(pitch)
+                
+                # Calculate duration in seconds
+                start_time = onset_times[i]
+                end_time = onset_times[i + 1] if i < len(onset_times) - 1 else librosa.get_duration(y=y, sr=sr)
+                duration_seconds = end_time - start_time
+                
+                # Convert duration and start time to beats
+                duration_beats = (duration_seconds / 60) * tempo
+                start_beats = (start_time / 60) * tempo
+                
+                notes.append({
+                    'noteName': note_name.replace('♯', '#'),
+                    'duration': duration_beats,
+                    'start': start_beats
+                })
         
         # Create a music21 score from notes for key analysis
         score = music21.stream.Score()
         for note in notes:
-            note = note.replace('♯', '#')
-            score.append(music21.note.Note(note))
+            score.append(music21.note.Note(note['noteName']))
         key = score.analyze('key')
         logging.info(f"Key detected: {key}")
         
