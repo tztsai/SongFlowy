@@ -36,7 +36,7 @@
 
 <script setup>
 import { ref, computed, onUnmounted } from 'vue'
-import { useMusicStore, scaleMap, noteColors } from '@/stores/music'
+import { useMusicStore } from '@/stores/music'
 
 const musicStore = useMusicStore()
 const fileInput = ref(null)
@@ -72,36 +72,6 @@ function triggerFileUpload() {
   fileInput.value.click()
 }
 
-function translateKey(key) {
-  const keys = 'ABCDEFG'
-  let octave = key[key.length - 1]
-  let postfix = ''
-  if (!/\d/.test(octave)) {
-    octave = '4'
-    if (key.includes('m')) {  // minor
-      postfix = 'm'
-    }
-  } else {
-    key = key.slice(0, key.length - 1)
-    postfix = octave
-  }
-  const k = key[0].toUpperCase()
-  let index = keys.indexOf(k)
-  if (key.includes('b')) {
-    return keys[index].toLowerCase() + postfix
-  } else if (key.includes('#')) {
-    if (index === 6) {
-      index = -1
-      if (/\d/.test(postfix)) {
-        postfix = parseInt(postfix) + 1
-      }
-    }
-    return keys[index + 1].toLowerCase() + postfix
-  } else {
-    return keys[index] + postfix
-  }
-}
-
 async function handleFileUpload(event) {
   const file = event.target.files[0]
   if (!file) return
@@ -128,30 +98,11 @@ async function handleFileUpload(event) {
     if (data.tempo) {
       musicStore.setBpm(data.tempo)
     }
-    // Set the key first before processing notes
     if (data.key) {
-      let key = translateKey(data.key)
-      if (!scaleMap[key]) {
-        throw new Error(`Invalid key: ${key}`)
-      }
-      musicStore.setKey(key)
-      console.log('Set key to:', key, 'Scale:', scaleMap[key])
+      musicStore.setKey(data.key)
     }
-    // Process notes
     if (data.notes) {
-      musicStore.setNotes(data.notes.map((note, index) => {
-        const key = translateKey(note.noteName)
-        console.log(note.noteName, key, note.start, note.duration)
-        const y = note.start * 60
-        return {
-          id: index,
-          column: scaleMap[currentKey.value].indexOf(key[0]),
-          y: document.querySelector('.track-columns').clientHeight - y,
-          length: note.duration * 60,
-          noteName: key,
-          color: noteColors[key[0]]
-        }
-      }).filter(Boolean))
+      musicStore.setNotes(data.notes)
     }
   } catch (error) {
     console.error('Upload error:', error)

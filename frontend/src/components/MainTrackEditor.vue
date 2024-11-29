@@ -2,18 +2,20 @@
   <v-card class="main-track-editor" elevation="3">
     <v-card-text class="track-container pa-0">
       <!-- Track Columns -->
-      <div class="track-columns">
-        <!-- Bar Lines -->
-        <div v-for="bar in barLines" :key="'bar-' + bar.id" class="bar-line"
-          :style="{ top: bar.y + 'px' }">
-        </div>
-        <div v-for="col in cols" :key="col" class="track-column" @click="addNote($event, col)">
-          <div v-for="note in getNotesInColumn(col)" :key="note.id" class="note" 
-            :style="getNoteStyle(note)"
-            @mousedown="startDragging(note, $event)"
-            @mouseup="stopDragging($event)"
-            @mousemove="handleDrag($event)">
-            {{ note.noteName }}
+      <div class="track-columns-container">
+        <div class="track-columns">
+          <!-- Bar Lines -->
+          <div v-for="bar in barLines" :key="'bar-' + bar.id" class="bar-line"
+            :style="{ top: bar.y + 'px' }">
+          </div>
+          <div v-for="col in cols" :key="col" class="track-column" @click="addNote($event, col)">
+            <div v-for="note in getNotesInColumn(col)" :key="note.id" class="note" 
+              :style="getNoteStyle(note)"
+              @mousedown="startDragging(note, $event)"
+              @mouseup="stopDragging($event)"
+              @mousemove="handleDrag($event)">
+              {{ note.noteName }}
+            </div>
           </div>
         </div>
       </div>
@@ -23,7 +25,7 @@
         <v-chip 
           v-for="col in cols" 
           :key="col" 
-          :color="noteColors[getScaleNoteForColumn(col)]" 
+          :color="noteColors[getScaleNoteForColumn(col)[0]]" 
           class="scale-note-chip"
           @click="playNote(getScaleNoteForColumn(col))"
         >
@@ -36,7 +38,7 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
-import { useMusicStore, scaleMap, noteColors } from '@/stores/music'
+import { useMusicStore, scaleMap, noteColors, baseOctave } from '@/stores/music'
 import { Piano } from '@/sound/piano'
 
 const cols = ref(14)
@@ -46,7 +48,6 @@ const scaleNotes = computed(() => scaleMap[musicStore.currentKey])
 const isPlaying = computed(() => musicStore.isPlaying)
 const notes = computed(() => musicStore.getNotes)
 
-let nextNoteId = 0
 let draggedNote = null
 let dragStartY = 0
 let animationFrame = null
@@ -65,23 +66,18 @@ function initBarLines() {
 function addNote(event, col) {
   if (draggedNote) return
   const rect = event.target.getBoundingClientRect()
-  const y = event.clientY - rect.top
-  const noteName = scaleNotes.value[col % scaleNotes.value.length]
-  
-  const newNote = {
-    id: nextNoteId++,
-    column: col,
-    y,
-    length: 60,
-    noteName,
-    color: noteColors[noteName]
-  }
-  
-  musicStore.addNote(newNote)
+  const scrollTop = event.target.closest('.track-columns-container').scrollTop
+  const y = event.clientY - rect.top + scrollTop
+  const noteName = getScaleNoteForColumn(col)
+  musicStore.addNote({
+    noteName: noteName,
+    duration: 1,
+    y
+  })
 }
 
 function getNotesInColumn(col) {
-  return notes.value.filter(note => note.column === col)
+  return notes.value.filter(note => note.noteName === getScaleNoteForColumn(col))
 }
 
 function getNoteStyle(note) {
@@ -107,7 +103,9 @@ function stopDragging(event) {
 
 function handleDrag(event) {
   if (!draggedNote) return
-  const newY = event.clientY - dragStartY
+  const rect = event.target.getBoundingClientRect()
+  const scrollTop = event.target.closest('.track-columns-container').scrollTop
+  const newY = event.clientY - dragStartY + scrollTop
   draggedNote.y = Math.max(0, newY)
   event.preventDefault()
 }
@@ -115,7 +113,9 @@ function handleDrag(event) {
 function getScaleNoteForColumn(col) {
   const scale = scaleNotes.value
   if (!scale) return ''
-  return scale[(col - 1) % scale.length]
+  const note = scale[(col - 1) % scale.length]
+  const octave = baseOctave + Math.floor(col / scale.length)
+  return note + octave
 }
 
 function updateNotes() {
@@ -152,7 +152,7 @@ function updateNotes() {
 function note2piano(note) {
   const notes = 'CdDeEFgGaAbB'
   const m = note.match(/\d+$/);
-  const octave = m ? parseInt(m[0]) : 4;
+  const octave = m ? parseInt(m[0]) : baseOctave;
   note = note.replace(/\d+$/, '');
   return notes.indexOf(note) + octave * 12
 }
@@ -230,15 +230,21 @@ onUnmounted(() => {
   min-height: 0;
 }
 
-.track-columns {
+.track-columns-container {
   flex: 1;
+  overflow-y: auto;
+  position: relative;
+  min-height: 0;
+}
+
+.track-columns {
   display: grid;
   grid-template-columns: repeat(14, 1fr);
   gap: 1px;
   background: #2D2D2D;
   padding: 1px;
   position: relative;
-  overflow: hidden;
+  min-height: 2000px;  /* Gives enough space for scrolling */
 }
 
 .track-column {

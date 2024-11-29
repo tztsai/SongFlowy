@@ -42,12 +42,65 @@ export const noteColors = {
   'e': '#FF0000'
 }
 
+export const beatHeight = 60
+export const baseOctave = 3
+
+// Note prototype for consistent note creation
+export class Note {
+  constructor({ id, noteName, start, y, duration }) {
+    if (!/.*\d/.test(noteName))
+      noteName += baseOctave
+    if (noteName.length != 2)
+      throw new Error(`Invalid note name: ${noteName}`)
+    this.id = id
+    this.noteName = noteName
+    this.color = noteColors[noteName[0]]
+    if (start === undefined) {
+      this.setVisualPosition(y)
+    } else {
+      this.start = start
+    }
+    this._updatePosition()
+    this.end = this.start + duration
+  }
+
+  get end() {
+    return this._end
+  }
+
+  set end(value) {
+    if (value < this.start)
+      throw new Error('End time must be greater than start time')
+    this._end = value
+    this.duration = value - this.start
+    this._updatePosition()
+  }
+
+  _updatePosition() {
+    // Convert musical timing (beats) to visual position (pixels)
+    this.y = this.start * beatHeight
+    this.length = this.duration * beatHeight
+  }
+
+  // Update note position based on visual coordinates
+  setVisualPosition(y) {
+    this.y = y
+    this.start = y / beatHeight // Convert back to beats
+  }
+
+  getScalePosition(store) {
+    return store.currentScale.indexOf(this.noteName[0])
+  }
+}
+
 export const useMusicStore = defineStore('music', {
   state: () => ({
     bpm: 80,
     isPlaying: false,
     currentKey: 'C',
-    notes: []
+    currentScale: scaleMap['C'],
+    notes: [],
+    nextNoteId: 0
   }),
 
   actions: {
@@ -57,15 +110,43 @@ export const useMusicStore = defineStore('music', {
     setIsPlaying(isPlaying) {
       this.isPlaying = isPlaying
     },
-    setNotes(notes) {
-      this.notes = notes
-    },
     setKey(key) {
+      key = translateNote(key.replace('m', '')) + (key.includes('m') ? 'm' : '')
       this.currentKey = key
       this.currentScale = scaleMap[key]
     },
+    setNotes(notes) {
+      this.notes = []
+      notes.forEach(note => this.addNote(note))
+    },
     addNote(note) {
+      if (!note) return
+      note = note instanceof Note ? note : new Note({
+        id: note.id ?? this.nextNoteId++,
+        noteName: translateNote(note.noteName),
+        start: note.start,
+        y: note.y,  // only needs one of start and y
+        duration: note.duration
+      })
+      // Find any overlapping notes with the same name
+      for (const exNote of this.notes) {
+        if (exNote.noteName === note.noteName && 
+            (exNote.start <= note.end && exNote.end >= note.start) || 
+            (exNote.end >= note.start && exNote.start <= note.end)) {
+          const newStart = Math.min(exNote.start, note.start)
+          const newEnd = Math.max(exNote.end, note.end)
+          exNote.start = newStart
+          exNote.end = newEnd
+          return
+        }
+      }
       this.notes.push(note)
+    },
+    removeNote(id) {
+      const index = this.notes.findIndex(note => note.id === id)
+      if (index !== -1) {
+        this.notes.splice(index, 1)
+      }
     }
   },
 
@@ -76,3 +157,31 @@ export const useMusicStore = defineStore('music', {
     getNotes: (state) => state.notes
   }
 })
+
+// translate notes with sharps or flats to lowercase letters
+function translateNote(key) {
+  if (key === key.toLowerCase()) {
+    return key
+  }
+  const keys = 'ABCDEFG'
+  let octave = key[key.length - 1]
+  if (!/\d/.test(octave)) {
+    octave = ''
+  } else {
+    key = key.slice(0, key.length - 1)
+  }
+  let i = keys.indexOf(key[0])
+  if (key.includes('b')) {
+    return keys[i].toLowerCase() + octave
+  } else if (key.includes('#')) {
+    if (i === keys.length - 1) {
+      i = -1
+      if (octave) {
+        octave = parseInt(octave) + 1
+      }
+    }
+    return keys[i + 1].toLowerCase() + octave
+  } else {
+    return keys[i] + octave
+  }
+}
