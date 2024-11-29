@@ -13,6 +13,18 @@ import './assets/main.css'
 const vuetify = createVuetify({
   components,
   directives,
+  theme: {
+    defaultTheme: 'dark',
+    themes: {
+      dark: {
+        dark: true,
+        colors: {
+          primary: '#1867C0',
+          secondary: '#5CBBF6',
+        }
+      }
+    }
+  }
 })
 
 const pinia = createPinia()
