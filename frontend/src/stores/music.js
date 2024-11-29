@@ -54,6 +54,7 @@ export class Note {
       throw new Error(`Invalid note name: ${noteName}`)
     this.id = id
     this.noteName = noteName
+    this.duration = duration
     this.color = noteColors[noteName[0]]
     if (start === undefined) {
       this.setVisualPosition(y)
@@ -61,17 +62,15 @@ export class Note {
       this.start = start
     }
     this._updatePosition()
-    this.end = this.start + duration
   }
 
   get end() {
-    return this._end
+    return this.start + this.duration
   }
 
   set end(value) {
     if (value < this.start)
       throw new Error('End time must be greater than start time')
-    this._end = value
     this.duration = value - this.start
     this._updatePosition()
   }
@@ -86,10 +85,6 @@ export class Note {
   setVisualPosition(y) {
     this.y = y
     this.start = y / beatHeight // Convert back to beats
-  }
-
-  getScalePosition(store) {
-    return store.currentScale.indexOf(this.noteName[0])
   }
 }
 
@@ -131,8 +126,8 @@ export const useMusicStore = defineStore('music', {
       // Find any overlapping notes with the same name
       for (const exNote of this.notes) {
         if (exNote.noteName === note.noteName && 
-            (exNote.start <= note.end && exNote.end >= note.start) || 
-            (exNote.end >= note.start && exNote.start <= note.end)) {
+            ((exNote.start <= note.end && exNote.end >= note.start) || 
+             (exNote.end >= note.start && exNote.start <= note.end))) {
           const newStart = Math.min(exNote.start, note.start)
           const newEnd = Math.max(exNote.end, note.end)
           exNote.start = newStart

@@ -8,12 +8,14 @@
           <div v-for="bar in barLines" :key="'bar-' + bar.id" class="bar-line"
             :style="{ top: bar.y + 'px' }">
           </div>
-          <div v-for="col in cols" :key="col" class="track-column" @click="addNote($event, col)">
-            <div v-for="note in getNotesInColumn(col)" :key="note.id" class="note" 
+          <div v-for="col in cols" :key="col" class="track-column" 
+            @click="addNote($event, col)"
+            @mousemove="handleDrag($event)"
+            @mouseup="stopDragging($event)">
+            <div v-for="note in getNotesInColumn(col)"
+              :key="note.id" class="note" 
               :style="getNoteStyle(note)"
-              @mousedown="startDragging(note, $event)"
-              @mouseup="stopDragging($event)"
-              @mousemove="handleDrag($event)">
+              @mousedown="startDragging(note, $event)">
               {{ note.noteName }}
             </div>
           </div>
@@ -38,7 +40,7 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
-import { useMusicStore, scaleMap, noteColors, baseOctave } from '@/stores/music'
+import { useMusicStore, scaleMap, noteColors, baseOctave, beatHeight } from '@/stores/music'
 import { Piano } from '@/sound/piano'
 
 const cols = ref(14)
@@ -53,22 +55,29 @@ let dragStartY = 0
 let animationFrame = null
 
 const barLines = ref([])
+const barHeight = 4 * beatHeight
+const numBars = 10
 
 function initBarLines() {
+  const container = document.querySelector('.track-columns')
+  if (!container) return
   barLines.value = []
-  const containerHeight = document.querySelector('.track-columns')?.clientHeight || 0
-  const numBars = Math.ceil(containerHeight / 240)
+  
+  // Create bar lines every 4 beats
   for (let i = 0; i < numBars; i++) {
-    barLines.value.push({ y: i * 240 })
+    barLines.value.push({
+      id: i,
+      y: i * barHeight
+    })
   }
 }
 
 function addNote(event, col) {
   if (draggedNote) return
   const rect = event.target.getBoundingClientRect()
-  const scrollTop = event.target.closest('.track-columns-container').scrollTop
-  const y = event.clientY - rect.top + scrollTop
+  const y = rect.bottom - event.clientY
   const noteName = getScaleNoteForColumn(col)
+  console.log("Clicked on column", col, "note", noteName)
   musicStore.addNote({
     noteName: noteName,
     duration: 1,
@@ -90,7 +99,8 @@ function getNoteStyle(note) {
 
 function startDragging(note, event) {
   draggedNote = note
-  dragStartY = event.clientY - note.y
+  dragStartY = note.y + event.clientY
+  console.log(event.clientY, note.y)
   event.stopPropagation()
 }
 
@@ -103,10 +113,8 @@ function stopDragging(event) {
 
 function handleDrag(event) {
   if (!draggedNote) return
-  const rect = event.target.getBoundingClientRect()
-  const scrollTop = event.target.closest('.track-columns-container').scrollTop
-  const newY = event.clientY - dragStartY + scrollTop
-  draggedNote.y = Math.max(0, newY)
+  const newY = dragStartY - event.clientY
+  draggedNote.setVisualPosition(newY)
   event.preventDefault()
 }
 
@@ -114,7 +122,8 @@ function getScaleNoteForColumn(col) {
   const scale = scaleNotes.value
   if (!scale) return ''
   const note = scale[(col - 1) % scale.length]
-  const octave = baseOctave + Math.floor(col / scale.length)
+  const index = 'ABCDEFG'.indexOf(scale[0].toUpperCase()) + col - 1
+  const octave = baseOctave + Math.floor(index / scale.length)
   return note + octave
 }
 
@@ -124,25 +133,23 @@ function updateNotes() {
     return
   }
 
-  const containerHeight = document.querySelector('.track-columns').clientHeight
   notes.value.forEach(note => {
-    const oldBottom = note.y + note.length
-    note.y += (musicStore.bpm / 60) * 2
-    const newBottom = note.y + note.length
+    const old_y = note.y
+    note.y -= (musicStore.bpm / 60) * 2
 
-    if (oldBottom < containerHeight && newBottom >= containerHeight) {
+    if (old_y > 0 && note.y <= 0) {
       playNote(note.noteName)
     }
-    if (note.y >= containerHeight) {
-      note.y = 0
+    if (note.y <= -note.length) {
+      note.y += numBars * barHeight
     }
   })
 
   barLines.value.forEach(bar => {
     const dy = (musicStore.bpm / 60) * 2
-    bar.y += dy
-    if (bar.y >= containerHeight && bar.y % 240 < dy) {
-      bar.y = 0
+    bar.y -= dy
+    if (bar.y / barHeight <= -1) {
+      bar.y += numBars * barHeight
     }
   })
 
@@ -234,7 +241,7 @@ onUnmounted(() => {
   flex: 1;
   overflow-y: auto;
   position: relative;
-  min-height: 0;
+  transform: scaleY(-1);  /* Flip the container */
 }
 
 .track-columns {
@@ -244,7 +251,7 @@ onUnmounted(() => {
   background: #2D2D2D;
   padding: 1px;
   position: relative;
-  min-height: 2000px;  /* Gives enough space for scrolling */
+  min-height: 2400px;  /* Gives enough space for scrolling */
 }
 
 .track-column {
@@ -273,6 +280,7 @@ onUnmounted(() => {
   cursor: move;
   user-select: none;
   transition: background-color 0.2s;
+  transform: scaleY(-1);
 }
 
 .note.is-falling {
