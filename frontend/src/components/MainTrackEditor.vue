@@ -32,9 +32,10 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useMusicStore, scaleMap } from '@/stores/music'
+import { Piano } from '@/sound/piano'
 
 const cols = ref(14)
-const audioContext = ref(null)
+const instrument = new Piano()
 const musicStore = useMusicStore()
 const scaleNotes = computed(() => scaleMap[musicStore.currentKey])
 const isPlaying = computed(() => musicStore.isPlaying)
@@ -53,42 +54,6 @@ const noteColors = {
   'F': '#FFCD00',
   'E': '#FF5600',
   'e': '#FF0000'
-}
-
-const noteFrequencies = {
-  'C': 261.63,
-  'd': 277.18,
-  'D': 293.66,
-  'e': 311.13,
-  'E': 329.63,
-  'F': 349.23,
-  'g': 369.99,
-  'G': 392.00,
-  'a': 415.30,
-  'A': 440.00,
-  'b': 466.16,
-  'B': 493.88
-}
-
-const keyboardMap = {
-  'a': 0,  // 1
-  'w': 1,  // 2b
-  's': 2,  // 2
-  'e': 3,  // 3b
-  'd': 4,  // 3
-  'f': 5,  // 4
-  't': 6,  // 5b
-  'g': 7,  // 5
-  'y': 8,  // 6b
-  'h': 9,  // 6
-  'u': 10, // 7b
-  'j': 11, // 7
-  'k': 12, // 8
-  'o': 13, // 9b
-  'l': 14, // 9
-  'p': 15, // 10b
-  ';': 16, // 10
-  "'": 17  // 11
 }
 
 let nextNoteId = 0
@@ -172,17 +137,42 @@ function updateNotes() {
   animationFrame = requestAnimationFrame(updateNotes)
 }
 
-function handleKeyPress(event) {
+function note2piano(note) {
+  const notes = 'CdDeEFgGaAbB'
+  const m = note.match(/\d+$/);
+  const octave = m ? parseInt(m[0]) : 4;
+  note = note.replace(/\d+$/, '');
+  return notes.indexOf(note) + octave * 12
+}
+
+function playNote(note) {
+  const pianoNote = note2piano(note)
+  instrument.keyDown(pianoNote)
+  setTimeout(() => {
+    instrument.keyUp(pianoNote)
+  }, (note.length * 1000 / musicStore.bpm))
+}
+
+const keyboardChars = 'awsedftgyhujkolp;'
+
+function keyboard2piano(note) {
+  return keyboardChars.indexOf(note.toLowerCase()) + 48
+}
+
+async function handleKeyDown(event) {
   if (event.repeat) return // Prevent key repeat
   const key = event.key.toLowerCase()
-  const notes = 'aAbBCdDeEFgG'
-  if (key in keyboardMap) {
+  if (keyboardChars.includes(key)) {
     event.preventDefault()
-    let i = keyboardMap[key]
-    let j = notes.indexOf(scaleNotes.value[0])
-    let k = (i + j) % notes.length
-    let octave = Math.floor(i / notes.length) + 4
-    playNote(notes[k] + octave)
+    await instrument.keyDown(keyboard2piano(key))
+  }
+}
+
+function handleKeyUp(event) {
+  const key = event.key.toLowerCase()
+  if (keyboardChars.includes(key)) {
+    event.preventDefault()
+    instrument.keyUp(keyboard2piano(key))
   }
 }
 
@@ -196,46 +186,17 @@ watch(isPlaying, (newValue) => {
   }
 })
 
-function playNote(noteName) {
-  if (!audioContext.value) return
-
-  const oscillator = audioContext.value.createOscillator()
-  const gainNode = audioContext.value.createGain()
-  
-  // Set note frequency
-  let m = noteName.match(/\d+$/);
-  const octave = m ? parseInt(m[0]) : 4;
-  const baseFreq = noteFrequencies[noteName.replace(/\d+/, '')]
-  const octaveFreq = baseFreq * Math.pow(2, octave - 4)
-  oscillator.frequency.setValueAtTime(octaveFreq, audioContext.value.currentTime)
-  
-  // Set waveform
-  oscillator.type = 'sine'
-  
-  // Configure gain (volume envelope)
-  gainNode.gain.setValueAtTime(0, audioContext.value.currentTime)
-  gainNode.gain.linearRampToValueAtTime(0.5, audioContext.value.currentTime + 0.01)
-  gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.value.currentTime + 0.5)
-  
-  // Connect nodes
-  oscillator.connect(gainNode)
-  gainNode.connect(audioContext.value.destination)
-  
-  // Start and stop
-  oscillator.start()
-  oscillator.stop(audioContext.value.currentTime + 0.5)
-}
-
 onMounted(() => {
-  audioContext.value = new (window.AudioContext || window.webkitAudioContext)()
-  window.addEventListener('keydown', handleKeyPress)
+  window.addEventListener('keydown', handleKeyDown)
+  window.addEventListener('keyup', handleKeyUp)
 })
 
 onUnmounted(() => {
   if (animationFrame) {
     cancelAnimationFrame(animationFrame)
   }
-  window.removeEventListener('keydown', handleKeyPress)
+  window.removeEventListener('keydown', handleKeyDown)
+  window.removeEventListener('keyup', handleKeyUp)
 })
 </script>
 
