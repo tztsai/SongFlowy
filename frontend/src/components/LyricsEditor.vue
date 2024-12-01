@@ -1,43 +1,30 @@
 <template>
   <div class="lyrics-editor">
-    <v-textarea
-      v-model="lyrics"
-      label="Lyrics"
-      rows="10"
-      hide-details
-      density="compact"
-      class="lyrics-input"
-      @input="handleLyricsChange"
-    ></v-textarea>
-    <div class="lyrics-preview">
-      <div v-for="(bar, index) in lyricsPerBar" :key="index" class="bar-lyrics">
-        {{ bar }}
-      </div>
+    <div v-for="(bar, barIndex) in barNotes" :key="barIndex" class="bar-input">
+      <v-text-field
+        :ref="el => textFieldRefs[barIndex] = el"
+        :model-value="getBarLyrics(bar)"
+        @update:model-value="value => updateBarLyrics(barIndex, value)"
+        :placeholder="'Bar ' + (barIndex + 1)"
+        hide-details
+        density="compact"
+        variant="outlined"
+        bg-color="rgba(0, 0, 0, 0.2)"
+        :maxlength="isLastBar(barIndex) ? bar.length : undefined"
+      />
     </div>
   </div>
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref, nextTick } from 'vue'
 import { useMusicStore } from '@/stores/music'
 
 const musicStore = useMusicStore()
+const textFieldRefs = ref({})
 
-const lyrics = computed({
-  get: () => musicStore.lyrics,
-  set: (value) => {
-    // Split lyrics into characters and assign to notes
-    const chars = value.replace(/[\s\n]/g, '').split('')
-    musicStore.notes
-      .sort((a, b) => a.start - b.start)
-      .forEach((note, index) => {
-        musicStore.setNoteLyric(note.id, chars[index] || '')
-      })
-  }
-})
-
-const lyricsPerBar = computed(() => {
-  // Group notes by bars and show their lyrics
+const barNotes = computed(() => {
+  // Group notes by bars
   const bars = {}
   musicStore.notes.forEach(note => {
     const barIndex = Math.floor(note.start / musicStore.beatsPerBar)
@@ -45,46 +32,108 @@ const lyricsPerBar = computed(() => {
     bars[barIndex].push(note)
   })
 
-  return Object.values(bars)
-    .map(barNotes => 
-      barNotes
-        .sort((a, b) => a.start - b.start)
-        .map(note => note.lyric || '_')
-        .join('')
-    )
+  // Sort bars by index and sort notes within each bar
+  return Object.entries(bars)
+    .sort(([a], [b]) => Number(a) - Number(b))
+    .map(([_, notes]) => notes.sort((a, b) => a.start - b.start))
 })
+
+function isLastBar(barIndex) {
+  return barIndex === barNotes.value.length - 1
+}
+
+function getBarLyrics(notes) {
+  return notes.map(note => note.lyric || '').join('')
+}
+
+async function focusNextBar(barIndex) {
+  await nextTick()
+  const nextField = textFieldRefs.value[barIndex + 1]?.$el.querySelector('input')
+  if (nextField) {
+    nextField.focus()
+    nextField.setSelectionRange(1, 1)
+  }
+}
+
+function updateBarLyrics(barIndex, value) {
+  const currentBar = barNotes.value[barIndex]
+  if (!currentBar) return
+
+  const chars = value.split('')
+  const maxChars = currentBar.length
+  
+  // If we're in the last bar, just update normally and return
+  if (isLastBar(barIndex)) {
+    currentBar.forEach((note, index) => {
+      if (note && index < maxChars) {
+        musicStore.setNoteLyric(note.id, chars[index] || '')
+      }
+    })
+    return
+  }
+  
+  // If we have more characters than notes in current bar
+  if (chars.length > maxChars) {
+    // Update current bar
+    currentBar.forEach((note, index) => {
+      if (note) {
+        musicStore.setNoteLyric(note.id, chars[index] || '')
+      }
+    })
+    
+    // Get overflow characters
+    const overflow = chars.slice(maxChars)
+    
+    // Update next bar if it exists
+    const nextBar = barNotes.value[barIndex + 1]
+    if (nextBar) {
+      const nextBarCurrentLyrics = getBarLyrics(nextBar).split('')
+      const combinedLyrics = [...overflow, ...nextBarCurrentLyrics]
+      
+      nextBar.forEach((note, index) => {
+        if (note) {
+          musicStore.setNoteLyric(note.id, combinedLyrics[index] || '')
+        }
+      })
+      
+      // Focus next bar
+      focusNextBar(barIndex)
+    }
+    
+    // Trim the value to max length for current bar
+    return chars.slice(0, maxChars).join('')
+  } else {
+    // Normal update for current bar
+    currentBar.forEach((note, index) => {
+      if (note) {
+        musicStore.setNoteLyric(note.id, chars[index] || '')
+      }
+    })
+  }
+}
 </script>
 
 <style scoped>
 .lyrics-editor {
   height: 100%;
+  min-width: 230px;
   display: flex;
   flex-direction: column;
-  /* padding: 8px; */
-  background: rgba(0, 0, 0, 0.1);
   border-left: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.lyrics-input {
-  flex: 1;
-  font-size: 16px;
-  line-height: 1.5;
-  background: rgba(0, 0, 0, 0.2);
-  border-radius: 4px;
-}
-
-.lyrics-preview {
-  margin-top: 8px;
-  font-size: 14px;
-  color: rgba(255, 255, 255, 0.7);
   padding: 8px;
-  background: rgba(0, 0, 0, 0.2);
-  border-radius: 4px;
+  overflow-y: auto;
 }
 
-.bar-lyrics {
-  margin: 4px 0;
-  padding: 4px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+.bar-input {
+  margin-bottom: 8px;
+}
+
+:deep(.v-field__input) {
+  font-family: 'Roboto Mono', monospace;
+  padding: 4px 12px !important;
+}
+
+:deep(.v-field__outline) {
+  opacity: 0.2;
 }
 </style>

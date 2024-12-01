@@ -53,10 +53,10 @@ export class Note {
     this.id = id
     this.noteName = noteName
     this.color = noteColors[noteName[0]]
+    this.lyric = ''  // Add lyric property
     // start and duration are in beats
     this._start = start
     this._duration = duration
-    this.lyric = ''  // Add lyric property
   }
 
   get start() { return this._start }
