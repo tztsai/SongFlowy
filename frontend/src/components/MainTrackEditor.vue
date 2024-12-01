@@ -1,7 +1,8 @@
 <template>
   <v-card class="main-track-editor">
-    <v-container class="track-container">
-      <v-col>
+    <v-container fluid class="track-container">
+      <!-- Main Track Area -->
+      <div class="main-track-area">
         <!-- Track Columns -->
         <div class="track-columns">
           <div class="hit-band"></div>
@@ -10,8 +11,9 @@
           <div v-for="col in cols" :key="col" class="track-column" @click="addNote($event, col)"
             @mousemove="handleDrag($event)" @mouseup="stopDragging($event)">
             <div v-for="note in getNotesInColumn(col)" :key="note.id" class="note" :style="getNoteStyle(note)"
-              @mousedown="startDragging(note, $event)">
-              {{ note.noteName }}
+              @mousedown="startDragging(note, $event)"
+              @dblclick="editNoteLyric(note)">
+              {{ note.lyric || note.noteName }}
             </div>
           </div>
         </div>
@@ -22,15 +24,15 @@
             {{ getScaleNoteForColumn(col) }}
           </v-chip>
         </div>
-      </v-col>
-      <v-col>
-        <div class="progress-bar-container" 
-          @mousedown="startProgressDrag"
-          @mousemove="handleProgressDrag"
-          @mouseup="stopProgressDrag">
-          <div class="progress-bar" :style="{ height: currentProgress + '%' }"></div>
-        </div>
-      </v-col>
+      </div>
+
+      <!-- Progress Bar -->
+      <div class="progress-bar-container" 
+        @mousedown="startProgressDrag"
+        @mousemove="handleProgressDrag"
+        @mouseup="stopProgressDrag">
+        <div class="progress-bar" :style="{ height: currentProgress + '%' }"></div>
+      </div>
     </v-container>
 
     <!-- Score Display -->
@@ -312,27 +314,32 @@ onUnmounted(() => {
 <style scoped>
 .main-track-editor {
   background: #1E1E1E;
-  border-radius: 8px;
+  border-radius: 0px;
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 140px);
+  width: 100%;
+}
+
+.track-container {
+  display: flex;
+  flex: 1;
+  position: relative;
+  padding: 0;
+}
+
+.main-track-area {
+  flex: 1;
   display: flex;
   flex-direction: column;
 }
 
-.track-container {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  padding: 0;
-}
-
-.track-container>.v-col {
-  padding: 0;
-}
-
 .track-columns {
   display: grid;
-  grid-template-columns: repeat(14, 1fr);
+  grid-template-columns: repeat(12, 1fr);
   gap: 1px;
   background: #2D2D2D;
-  height: calc(100vh - 160px);
+  flex: 1;
   position: relative;
   transform: scaleY(-1);
 }
@@ -341,8 +348,7 @@ onUnmounted(() => {
   background: #1E1E1E;
   position: relative;
   min-height: 100%;
-  min-width: 30px;
-  width: 4vw;
+  min-width: 9%;
   cursor: pointer;
 }
 
@@ -372,17 +378,10 @@ onUnmounted(() => {
 }
 
 .scale-notes {
-  display: grid;
-  grid-template-columns: repeat(12, 1fr);
-  gap: 1px;
-  padding: 8px 0;
-  background: #2D2D2D;
-  z-index: 3;
-}
-
-.scale-note-chip {
-  margin: 0;
-  justify-self: center;
+  display: flex;
+  justify-content: space-between;
+  padding: 8px;
+  background: #1E1E1E;
 }
 
 .bar-line {
@@ -409,10 +408,11 @@ onUnmounted(() => {
 }
 
 .progress-bar-container {
-  width: 20px;
+  width: 15px;
   height: 100%;
   background: rgba(255, 255, 255, 0.1);
   cursor: pointer;
+  position: relative;
   z-index: 10;
 }
 
@@ -437,7 +437,6 @@ onUnmounted(() => {
   border-radius: 5px;
   color: white;
   font-family: 'Arial', sans-serif;
-  z-index: 3;
 }
 
 .combo {

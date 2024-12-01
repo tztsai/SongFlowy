@@ -1,8 +1,18 @@
 <template>
   <v-card class="top-panel">
-    <v-card-text>
+    <v-container>
       <v-row>
-        <v-col cols="4">
+        <v-col cols="auto">
+          <div class="time-display">
+            <div class="time-value">{{ currentTime }}</div>
+            <div class="time-label">Time</div>
+          </div>
+        </v-col>
+        <v-col cols="2">
+          <v-btn :color="isPlaying ? 'error' : 'success'" @click="togglePlay"
+            :icon="isPlaying ? 'mdi-pause' : 'mdi-play'" size="small" />
+        </v-col>
+        <v-col cols="3">
           <v-slider v-model="bpm" :min="30" :max="180" class="align-center" density="compact" hide-details>
             <template v-slot:append>
               <div class="text-medium-emphasis">{{ Math.round(bpm) }} BPM</div>
@@ -13,15 +23,8 @@
           <v-select v-model="currentKey" :items="keySignatures" label="Key" density="compact" hide-details
             @update:modelValue="updateKey" />
         </v-col> -->
-        <v-col cols="1" class="d-flex align-center">
-          <div class="text-large-emphasis">{{ currentTime }}</div>
-        </v-col>
-        <v-col cols="2">
-          <v-btn :color="isPlaying ? 'error' : 'success'" @click="togglePlay"
-            :icon="isPlaying ? 'mdi-pause' : 'mdi-play'" size="small" />
-        </v-col>
         <v-col cols="3">
-          <v-btn color="primary" prepend-icon="mdi-upload" size="small" class="align-center" @click="triggerFileUpload"
+          <v-btn color="primary" prepend-icon="mdi-upload" size="large" @click="triggerFileUpload"
             :loading="isUploading" :disabled="isUploading">
             Upload MIDI
           </v-btn>
@@ -30,7 +33,7 @@
           <div v-if="uploadError" class="text-red">{{ uploadError }}</div>
         </v-col>
       </v-row>
-    </v-card-text>
+    </v-container>
   </v-card>
 </template>
 
@@ -135,18 +138,42 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.top-panel {
-  border-radius: 8px;
-}
-
-.v-card-text {
-  padding-top: 8px;
-  padding-bottom: 8px;
-}
-
-.align-center {
+.v-col {
+  display: flex;
   align-items: center;
-  justify-content: center;
-  height: 100%;
+}
+
+.top-panel {
+  background: #1E1E1E;
+}
+
+.time-display {
+  background: rgba(0, 0, 0, 0.2);
+  padding: 8px 16px;
+  border-radius: 8px;
+  text-align: center;
+  min-width: 100px;
+}
+
+.time-value {
+  font-family: 'Roboto Mono', monospace;
+  font-size: 24px;
+  font-weight: 500;
+  color: #fff;
+  line-height: 1;
+  margin-bottom: 4px;
+}
+
+.time-label {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.7);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.v-btn-group {
+  .v-btn {
+    min-width: 80px;
+  }
 }
 </style>

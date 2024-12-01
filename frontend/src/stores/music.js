@@ -53,9 +53,10 @@ export class Note {
     this.id = id
     this.noteName = noteName
     this.color = noteColors[noteName[0]]
+    // start and duration are in beats
     this._start = start
     this._duration = duration
-    // start and duration are in beats
+    this.lyric = ''  // Add lyric property
   }
 
   get start() { return this._start }
@@ -98,6 +99,7 @@ export const useMusicStore = defineStore('music', {
     currentKey: 'T',
     baseOctave: 3,
     notes: [],
+    lyrics: '',  // Add lyrics property
   }),
 
   actions: {
@@ -165,6 +167,33 @@ export const useMusicStore = defineStore('music', {
       if (index !== -1) {
         this.notes.splice(index, 1)
       }
+    },
+    setNoteLyric(noteId, lyric) {
+      const note = this.notes.find(n => n.id === noteId)
+      if (note) {
+        note.lyric = lyric
+        // Update lyrics string
+        this.updateLyrics()
+      }
+    },
+    updateLyrics() {
+      // Group notes by bars
+      const notesPerBar = this.notes.reduce((acc, note) => {
+        const barIndex = Math.floor(note.start / this.beatsPerBar)
+        if (!acc[barIndex]) acc[barIndex] = []
+        acc[barIndex].push(note)
+        return acc
+      }, {})
+
+      // Sort notes within each bar and create lyrics string
+      this.lyrics = Object.values(notesPerBar)
+        .map(barNotes => 
+          barNotes
+            .sort((a, b) => a.start - b.start)
+            .map(note => note.lyric || '_')
+            .join('')
+        )
+        .join(' ')
     }
   },
 
