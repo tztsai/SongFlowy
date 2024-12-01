@@ -24,9 +24,11 @@
         </div>
       </v-col>
       <v-col>
-        <div class="progress-bar-container" @mousedown="startProgressDrag" @mousemove="handleProgressDrag"
-          @mouseup="stopProgressDrag" @mouseleave="stopProgressDrag">
-          <div class="progress-bar" :style="{ height: progressPercentage + '%' }"></div>
+        <div class="progress-bar-container" 
+          @mousedown="startProgressDrag"
+          @mousemove="handleProgressDrag"
+          @mouseup="stopProgressDrag">
+          <div class="progress-bar" :style="{ height: currentProgress + '%' }"></div>
         </div>
       </v-col>
     </v-container>
@@ -41,39 +43,37 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
-import { useMusicStore, scaleMap, noteColors, baseOctave, beatHeight } from '@/stores/music'
+import { useMusicStore, noteColors } from '@/stores/music'
 import { Piano } from '@/sound/piano'
 
-const cols = ref(14)
+const cols = ref(12)
+const barLines = ref([])
+const score = ref(0)
+const combo = ref(0)
 const instrument = new Piano()
 const musicStore = useMusicStore()
-const scaleNotes = computed(() => scaleMap[musicStore.currentKey])
 const isPlaying = computed(() => musicStore.isPlaying)
-const notes = computed(() => musicStore.getNotes)
+const scaleNotes = computed(() => musicStore.currentScale)
+const notes = computed(() => musicStore.notes)
+const currentProgress = computed(() => musicStore.progressPercent)
 
 let draggedNote = null
 let dragStartY = 0
 let animationFrame = null
-let isLooping = false
+let isDraggingProgress = false
 
-const barLines = ref([])
-const barHeight = 4 * beatHeight
-const numBars = 24
-const sheetHeight = numBars * barHeight
-const hitBandTop = 120
-const hitBandBottom = 80
-const goodHitWidth = 5
-const score = ref(0)
-const combo = ref(0)
+const barHeight = musicStore.barPixels
+const sheetHeight = musicStore.sheetPixels
+const hitZones = {
+  perfect: 10,
+  good: 20,
+  ok: 30
+}
+const hitZoneTop = 100
+const hitZoneBottom = hitZoneTop - hitZones.ok
 
 // Track which notes are currently in the hit band
-const activeHitNotes = new Set()
-
-const isDraggingProgress = ref(false)
-const currentProgress = ref(0)
-const progressPercentage = computed(() => {
-  return (currentProgress.value / sheetHeight) * 100
-})
+const activeHitNotes = new Map()
 
 function initBarLines() {
   const container = document.querySelector('.track-columns')
@@ -81,43 +81,38 @@ function initBarLines() {
   barLines.value = []
 
   // Create bar lines every 4 beats
-  for (let i = 0; i < numBars; i++) {
+  for (let i = 0; i < musicStore.numBars; i++) {
     barLines.value.push({
       id: i,
-      y: i * barHeight + hitBandTop
+      y: i * barHeight + hitZoneTop
     })
   }
-}
-
-function addNote(event, col) {
-  if (draggedNote) return
-  const rect = event.target.getBoundingClientRect()
-  const y = rect.bottom - event.clientY
-  const noteName = getScaleNoteForColumn(col)
-  console.log("Clicked on column", col, "note", noteName)
-  musicStore.addNote({
-    noteName: noteName,
-    duration: 1,
-    y
-  })
 }
 
 function getNotesInColumn(col) {
   return notes.value.filter(note => note.noteName === getScaleNoteForColumn(col))
 }
 
+function getScaleNoteForColumn(col) {
+  const scale = scaleNotes.value
+  if (!scale) return ''
+  const note = scale[(col - 1) % scale.length]
+  const index = 'aAbBCdDeEFgG'.indexOf(scale[0].toUpperCase()) + col - 1
+  const octave = musicStore.baseOctave + Math.floor(index / scale.length)
+  return note + octave
+}
+
 function getNoteStyle(note) {
   return {
     backgroundColor: note.color,
-    top: `${note.y}px`,
-    height: `${note.length}px`
+    top: `${note.top}px`,
+    height: `${note.height}px`
   }
 }
 
 function startDragging(note, event) {
   draggedNote = note
-  dragStartY = note.y + event.clientY
-  console.log(event.clientY, note.y)
+  dragStartY = note.top + event.clientY
   event.stopPropagation()
 }
 
@@ -130,88 +125,63 @@ function stopDragging(event) {
 
 function handleDrag(event) {
   if (!draggedNote) return
-  const newY = dragStartY - event.clientY
-  draggedNote.setVisualPosition(newY)
+  draggedNote.top = dragStartY - event.clientY
   event.preventDefault()
 }
 
 function startProgressDrag(event) {
-  isDraggingProgress.value = true
+  isDraggingProgress = true
   updateProgressFromMouseY(event)
 }
 
 function handleProgressDrag(event) {
-  if (!isDraggingProgress.value) return
+  if (!isDraggingProgress) return
   updateProgressFromMouseY(event)
 }
 
 function stopProgressDrag() {
-  isDraggingProgress.value = false
+  isDraggingProgress = false
 }
 
 function updateProgressFromMouseY(event) {
-  if (!isDraggingProgress.value) return
   const container = event.currentTarget
   const rect = container.getBoundingClientRect()
-  const percentage = (event.clientY - rect.top) / rect.height
-  const clampedPercentage = Math.max(0, Math.min(1, percentage))
-  const newProgress = clampedPercentage * sheetHeight
-  const delta = currentProgress.value - newProgress
-  currentProgress.value = newProgress
+  const progress = Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height))
+  const delta = (currentProgress.value / 100 - progress) * sheetHeight
+  musicStore.setProgress(progress)
 
   notes.value.forEach(note => {
-    note.setVisualPosition((note.y + delta) % sheetHeight)
+    note.top = (note.top + delta) % sheetHeight
   })
   barLines.value.forEach(bar => {
     bar.y = (bar.y + delta) % sheetHeight
   })
 }
 
-function getScaleNoteForColumn(col) {
-  const scale = scaleNotes.value
-  if (!scale) return ''
-  const note = scale[(col - 1) % scale.length]
-  const index = 'ABCDEFG'.indexOf(scale[0].toUpperCase()) + col - 1
-  const octave = baseOctave + Math.floor(index / scale.length)
-  return note + octave
+function addNote(event, col) {
+  if (draggedNote) return
+  const rect = event.target.getBoundingClientRect()
+  const y = rect.bottom - event.clientY
+  const noteName = getScaleNoteForColumn(col)
+  musicStore.addNote({ noteName, duration: 1, y })
 }
 
 function updateNotes() {
-  if (!isPlaying.value) {
-    cancelAnimationFrame(animationFrame)
-    return
-  }
+  if (!isPlaying) return
 
-  const dy = (musicStore.bpm / 60) * 2
-
-  if (currentProgress.value >= sheetHeight) {
-    if (isLooping) {
-      currentProgress.value -= sheetHeight
-    } else {
-      musicStore.setIsPlaying(false)
-      return
-    }
-  }
-
-  currentProgress.value += dy
+  const dy = musicStore.step()
 
   notes.value.forEach(note => {
-    const old_b = note.y
-    note.setVisualPosition(note.y - dy)
-    const new_b = note.y
-
-    const hitBandCenter = (hitBandTop + hitBandBottom) / 2
+    const old_b = note.top
+    note.top = note.top - dy
+    const new_b = note.top
 
     // Check if note enters hit band
-    if (old_b > hitBandTop && new_b <= hitBandTop) {
-      activeHitNotes.add(note.id)
-    }
-    // Play the note right in the center
-    if (old_b > hitBandCenter && new_b <= hitBandCenter) {
-      playNote(note.noteName)
+    if (old_b > hitZoneTop && new_b <= hitZoneTop) {
+      activeHitNotes.set(note.id, note)
     }
     // Check if note leaves hit band without being hit
-    if (old_b > hitBandBottom && new_b <= hitBandBottom) {
+    if (old_b > hitZoneBottom && new_b <= hitZoneBottom) {
       if (activeHitNotes.has(note.id)) {
         // Miss - reset combo
         combo.value = 0
@@ -220,10 +190,9 @@ function updateNotes() {
       }
       activeHitNotes.delete(note.id)
     }
-    if (note.y <= -note.length) {
-      note.setVisualPosition(note.y + sheetHeight)
-      // Reset note color
-      note.color = noteColors[note.noteName[0]]
+    if (note.top <= 0) {
+      note.top += sheetHeight
+      note.resetColor()
     }
   })
 
@@ -240,7 +209,7 @@ function updateNotes() {
 function note2piano(note) {
   const notes = 'AbBCdDeEFgGa'
   const m = note.match(/\d+$/);
-  const octave = m ? parseInt(m[0]) : baseOctave;
+  const octave = m ? parseInt(m[0]) : musicStore.baseOctave;
   note = note.replace(/\d+$/, '');
   return notes.indexOf(note) + octave * 12 - 3
 }
@@ -250,30 +219,30 @@ function playNote(note) {
   instrument.keyDown(pianoNote)
   setTimeout(() => {
     instrument.keyUp(pianoNote)
-  }, (note.length * 1000 / musicStore.bpm))
+  }, note.duration * 1000)
 }
 
-const keyboardChars = "zsxdcvgbhnjm,l.;/"
+const keyboardChars = "qwertyuiop[]"
 
-function keyboard2piano(note) {
-  return keyboardChars.indexOf(note.toLowerCase()) + 12 * baseOctave
+function keyboard2piano(key) {
+  const i = keyboardChars.indexOf(key.toLowerCase())
+  return note2piano(getScaleNoteForColumn(i + 1))
 }
 
 const handleKeyDown = async (event) => {
   if (event.repeat) return // Prevent key repeat
-  
+
   const key = event.key.toLowerCase()
-  
+
   if (!keyboardChars.includes(key)) return
-  
+
   event.preventDefault()
 
   const pianoKey = keyboard2piano(key)
 
   // hightlight the corresponding scale note
   for (const pitch of document.querySelectorAll('.scale-note-chip')) {
-    const note = pitch.textContent
-    if (note2piano(note) === pianoKey) {
+    if (note2piano(pitch.textContent) === pianoKey) {
       pitch.style.border = '1px solid #fff'
       setTimeout(() => {
         pitch.style.border = ''
@@ -283,24 +252,28 @@ const handleKeyDown = async (event) => {
   }
 
   // Check if any notes in the hit band match this key
-  for (const noteId of activeHitNotes) {
-    const note = notes.value.find(n => n.id === noteId)
-    if (!note) continue
-
+  for (const [noteId, note] of activeHitNotes) {
     if (note2piano(note.noteName) === pianoKey) {
-      const hitAccuracy = Math.abs((hitBandTop + hitBandBottom) / 2 - note.y)
-      const points = hitAccuracy <= goodHitWidth ? 20 : 10
+      const hitAccuracy = Math.abs((hitZoneTop + hitZoneBottom) / 2 - note.top)
+      let points
+      if (hitAccuracy <= hitZones.perfect) {
+        note.color = 'rgba(0, 255, 0, 0.5)'
+        points = 30
+      } else if (hitAccuracy <= hitZones.good) {
+        note.color = 'rgba(0, 255, 0, 0.5)'
+        points = 20
+      } else if (hitAccuracy <= hitZones.ok) {
+        note.color = 'rgba(255, 255, 0, 0.5)'
+        points = 10
+      } else {
+        note.color = 'rgba(255, 0, 0, 0.5)'
+        points = 0
+      }
       score.value += points
       combo.value++
       activeHitNotes.delete(noteId)
-      // Add visual feedback
-      note.color = 'rgba(0, 255, 0, 0.5)'
-      return
     }
   }
-  // Miss - reset combo
-  combo.value = 0
-
   await instrument.keyDown(keyboard2piano(key))
 }
 
@@ -314,7 +287,6 @@ function handleKeyUp(event) {
 
 // Watch for play state changes
 watch(isPlaying, (newValue) => {
-  console.log('Play state changed:', newValue)
   if (newValue) {
     updateNotes()
   } else if (animationFrame) {
@@ -351,7 +323,7 @@ onUnmounted(() => {
   padding: 0;
 }
 
-.track-container > .v-col {
+.track-container>.v-col {
   padding: 0;
 }
 
@@ -392,6 +364,7 @@ onUnmounted(() => {
   user-select: none;
   transition: background-color 0.2s;
   transform: scaleY(-1);
+  z-index: 2;
 }
 
 .note.is-falling {
@@ -400,10 +373,11 @@ onUnmounted(() => {
 
 .scale-notes {
   display: grid;
-  grid-template-columns: repeat(14, 1fr);
+  grid-template-columns: repeat(12, 1fr);
   gap: 1px;
   padding: 8px 0;
   background: #2D2D2D;
+  z-index: 3;
 }
 
 .scale-note-chip {
@@ -417,18 +391,18 @@ onUnmounted(() => {
   height: 1px;
   background-color: rgba(255, 255, 255, 0.3);
   pointer-events: none;
-  z-index: 1;
+  z-index: 3;
 }
 
 .hit-band {
   position: absolute;
-  top: v-bind(hitBandBottom + 'px');
-  height: v-bind(hitBandTop - hitBandBottom + 'px');
+  top: v-bind(hitZoneBottom + 'px');
+  height: v-bind(hitZoneTop - hitZoneBottom + 'px');
   left: 0;
   right: 0;
   background: linear-gradient(to bottom,
       rgba(255, 255, 255, 0.1),
-      rgba(242, 233, 151, 0.58) 50%,
+      rgba(204, 197, 139, 0.58) 50%,
       rgba(255, 255, 255, 0.1));
   pointer-events: none;
   z-index: 2;

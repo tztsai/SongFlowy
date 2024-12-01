@@ -1,6 +1,9 @@
 import { defineStore } from 'pinia'
 
-export const scaleMap = {
+const beatPixels = 30
+
+const scaleMap = {
+  'T': ['C', 'd', 'D', 'e', 'E', 'F', 'g', 'G', 'a', 'A', 'b', 'B'],
   'C': ['C', 'D', 'E', 'F', 'G', 'A', 'B'],
   'G': ['G', 'A', 'B', 'C', 'D', 'E', 'g'],
   'D': ['D', 'E', 'g', 'G', 'A', 'B', 'd'],
@@ -42,65 +45,81 @@ export const noteColors = {
   'e': '#FF0000'
 }
 
-export const beatHeight = 60
-export const baseOctave = 3
-
 // Note prototype for consistent note creation
 export class Note {
-  constructor({ id, noteName, start, y, duration }) {
-    if (!/.*\d/.test(noteName))
-      noteName += baseOctave
+  constructor({ id, noteName, start, duration }) {
     if (noteName.length != 2)
       throw new Error(`Invalid note name: ${noteName}`)
     this.id = id
     this.noteName = noteName
-    this.duration = duration
     this.color = noteColors[noteName[0]]
-    if (start === undefined) {
-      this.setVisualPosition(y)
-    } else {
-      this.start = start
-    }
-    this._updatePosition()
+    this._start = start
+    this._duration = duration
+    // start and duration are in beats
   }
 
-  get end() {
-    return this.start + this.duration
+  get start() { return this._start }
+  get end() { return this._start + this._duration }
+  get duration() { return this._duration }
+  get top() { return this.start * beatPixels }
+  get bottom() { return this.end * beatPixels }
+  get height() { return this.duration * beatPixels }
+
+  set start(start) {
+    this._start = start
+  }
+  set end(end) {
+    this._start = end - this._duration
+  }
+  set duration(duration) {
+    this._duration = duration
+  }
+  set top(top) {
+    this.start = top / beatPixels
+  }
+  set bottom(bottom) {
+    this.end = bottom / beatPixels
   }
 
-  set end(value) {
-    if (value < this.start)
-      throw new Error('End time must be greater than start time')
-    this.duration = value - this.start
-    this._updatePosition()
-  }
-
-  _updatePosition() {
-    // Convert musical timing (beats) to visual position (pixels)
-    this.y = this.start * beatHeight
-    this.length = this.duration * beatHeight
-  }
-
-  // Update note position based on visual coordinates
-  setVisualPosition(y) {
-    this.y = y
-    this.start = y / beatHeight // Convert back to beats
+  resetColor() {
+    this.color = noteColors[this.noteName[0]]
   }
 }
 
 export const useMusicStore = defineStore('music', {
   state: () => ({
     bpm: 80,
+    beatsPerBar: 4,
+    beatsPerWholeNote: 4,
+    totalBeats: 24,
+    currentBeats: 0,
     isPlaying: false,
-    currentKey: 'C',
-    currentScale: scaleMap['C'],
+    isLooping: false,
+    currentKey: 'T',
+    baseOctave: 3,
     notes: [],
-    nextNoteId: 0
   }),
 
   actions: {
     setBpm(bpm) {
       this.bpm = bpm
+    },
+    step(dt = 1 / 60) {  // 60 FPS
+      if (this.isPlaying) {
+        this.currentBeats += this.bps * dt
+        if (this.currentBeats >= this.totalBeats) {
+          if (this.isLooping) {
+            this.currentBeats = 0
+          } else {
+            this.currentBeats = this.totalBeats
+            this.isPlaying = false
+          }
+        }
+      }
+      return beatPixels * this.bps * dt
+    },
+    setProgress(progress) {
+      this.currentBeats = this.totalBeats * progress
     },
     setIsPlaying(isPlaying) {
       this.isPlaying = isPlaying
@@ -117,25 +136,29 @@ export const useMusicStore = defineStore('music', {
     addNote(note) {
       if (!note) return
       note = note instanceof Note ? note : new Note({
-        id: note.id ?? this.nextNoteId++,
+        id: note.id ?? this.notes.length,
         noteName: translateNote(note.noteName),
-        start: note.start,
-        y: note.y,  // only needs one of start and y
-        duration: note.duration
+        start: note.start ?? note.y / beatPixels,
+        duration: note.duration ?? note.beats / this.bps
       })
       // Find any overlapping notes with the same name
       for (const exNote of this.notes) {
         if (exNote.noteName === note.noteName && 
             ((exNote.start <= note.end && exNote.end >= note.start) || 
              (exNote.end >= note.start && exNote.start <= note.end))) {
-          const newStart = Math.min(exNote.start, note.start)
-          const newEnd = Math.max(exNote.end, note.end)
-          exNote.start = newStart
-          exNote.end = newEnd
+          const start = Math.min(exNote.start, note.start)
+          exNote.duration = Math.max(exNote.end, note.end) - start
+          exNote.start = start
           return
         }
       }
       this.notes.push(note)
+    },
+    updateNote(id, note) {
+      const index = this.notes.findIndex(note => note.id === id)
+      if (index !== -1) {
+        this.notes[index] = note
+      }
     },
     removeNote(id) {
       const index = this.notes.findIndex(note => note.id === id)
@@ -146,10 +169,15 @@ export const useMusicStore = defineStore('music', {
   },
 
   getters: {
-    getBpm: (state) => state.bpm,
-    getIsPlaying: (state) => state.isPlaying,
-    getCurrentKey: (state) => state.currentKey,
-    getNotes: (state) => state.notes
+    bps: (state) => state.bpm / 60,
+    barPixels: (state) => beatPixels * state.beatsPerBar,
+    sheetPixels: (state) => state.barPixels * state.numBars,
+    numBars: (state) => Math.ceil(state.totalBeats / state.beatsPerBar),
+    totalTime: (state) => state.totalBeats / state.bps,
+    currentTime: (state) => state.currentBeats / state.bps,
+    progressPercent: (state) => state.currentBeats / state.totalBeats * 100,
+    timeSignature: (state) => [state.beatsPerBar, state.beatsPerWholeNote],
+    currentScale: (state) => scaleMap[state.currentKey],
   }
 })
 

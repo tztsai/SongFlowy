@@ -2,19 +2,19 @@
   <v-card class="top-panel">
     <v-card-text>
       <v-row>
-        <v-col cols="1">
-          <v-icon size="large" color="primary">mdi-music</v-icon>
-        </v-col>
-        <v-col cols="2">
-          <v-select v-model="currentKey" :items="keySignatures" label="Key" density="compact" hide-details
-            @update:modelValue="updateKey" />
-        </v-col>
         <v-col cols="4">
           <v-slider v-model="bpm" :min="30" :max="180" class="align-center" density="compact" hide-details>
             <template v-slot:append>
               <div class="text-medium-emphasis">{{ Math.round(bpm) }} BPM</div>
             </template>
           </v-slider>
+        </v-col>
+        <!-- <v-col cols="2">
+          <v-select v-model="currentKey" :items="keySignatures" label="Key" density="compact" hide-details
+            @update:modelValue="updateKey" />
+        </v-col> -->
+        <v-col cols="1" class="d-flex align-center">
+          <div class="text-large-emphasis">{{ currentTime }}</div>
         </v-col>
         <v-col cols="2">
           <v-btn :color="isPlaying ? 'error' : 'success'" @click="togglePlay"
@@ -43,15 +43,19 @@ const fileInput = ref(null)
 const isUploading = ref(false)
 const uploadError = ref(null)
 
-const keySignatures = [
-  'C', 'd', 'D', 'e', 'E', 'F', 'g', 'G', 'a', 'A', 'b', 'B',
-  'Cm', 'dm', 'Dm', 'em', 'Em', 'fm', 'gm', 'Gm', 'am', 'Am', 'bm', 'Bm'
-]
+// const keySignatures = [
+//   'C', 'd', 'D', 'e', 'E', 'F', 'g', 'G', 'a', 'A', 'b', 'B',
+//   'Cm', 'dm', 'Dm', 'em', 'Em', 'fm', 'gm', 'Gm', 'am', 'Am', 'bm', 'Bm'
+// ]
 
-const currentKey = computed({
-  get: () => musicStore.getCurrentKey,
-  set: (value) => musicStore.setKey(value)
-})
+// const currentKey = computed({
+//   get: () => musicStore.currentKey,
+//   set: (value) => musicStore.setKey(value)
+// })
+
+// function updateKey(value) {
+//   musicStore.setKey(value)
+// }
 
 const bpm = computed({
   get: () => musicStore.bpm,
@@ -60,13 +64,16 @@ const bpm = computed({
 
 const isPlaying = computed(() => musicStore.isPlaying)
 
-function updateKey(value) {
-  musicStore.setKey(value)
-}
-
 function togglePlay() {
   musicStore.setIsPlaying(!musicStore.isPlaying)
 }
+
+const currentTime = computed(() => {
+  const seconds = musicStore.currentTime | 0
+  const mins = seconds / 60 | 0
+  const secs = seconds % 60
+  return `${mins}:${secs.toString().padStart(2, '0')}`
+})
 
 function triggerFileUpload() {
   fileInput.value.click()
