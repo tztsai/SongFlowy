@@ -1,5 +1,13 @@
 <template>
   <v-card class="main-track-editor">
+    <div class="controls">
+      <button class="mic-button" :class="{ active: isMicActive }" @click="toggleMicrophone">
+        {{ isMicActive ? '🎤 Stop' : '🎤 Start' }}
+      </button>
+      <div v-if="isMicActive" class="pitch-indicator" :style="pitchIndicatorStyle">
+        {{ currentPitch || 'No pitch detected' }}
+      </div>
+    </div>
     <v-container fluid class="track-container">
       <!-- Main Track Area -->
       <div class="main-track-area">
@@ -45,6 +53,7 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useMusicStore, noteColors } from '@/stores/music'
 import { Piano } from '@/sound/piano'
+import { PitchDetector } from '@/sound/pitch'
 import { reactive } from 'vue'
 
 const cols = ref(12)
@@ -54,23 +63,39 @@ const combo = ref(0)
 const instrument = new Piano()
 const musicStore = useMusicStore()
 const isPlaying = computed(() => musicStore.isPlaying)
+const isMicActive = ref(false)
 const scaleNotes = computed(() => musicStore.currentScale)
 const notes = computed(() => musicStore.notes)
 const currentProgress = computed(() => musicStore.progressPercent)
-
-let draggedNote = null
-let dragStartY = 0
-let animationFrame = null
-let isDraggingProgress = false
-
+const pitchDetector = new PitchDetector()
+const currentPitch = ref(null)
+const pitchTimeout = ref(null)
 const barHeight = musicStore.barPixels
 const sheetHeight = musicStore.sheetPixels
 const hitZoneHeight = 30
 const hitZoneTop = 100
 const hitZoneBottom = hitZoneTop - hitZoneHeight
+const pitchDebounce = 100 // ms between pitch detections
+const silenceThresh = 200 // ms of silence before considering note released
+const minNoteDuration = 50 // ms minimum duration for a note to be considered valid
+
+const pitchIndicatorStyle = computed(() => {
+  if (!currentPitch.value) return { opacity: 0.5 }
+  return {
+    opacity: 1,
+    color: 'white'
+  }
+})
 
 // Track which notes are currently in the hit band
 const activeHitNotes = new Map()
+
+let lastPitchTime = ref(0)
+let silenceTimeout = ref(null)
+let draggedNote = null
+let dragStartY = 0
+let animationFrame = null
+let isDraggingProgress = false
 
 function initBarLines() {
   const container = document.querySelector('.track-columns')
@@ -234,6 +259,14 @@ function editNoteLyric(note) {
   noteEl.addEventListener('blur', saveLyric)
 }
 
+function playNote(note) {
+  const pianoNote = note2piano(note)
+  instrument.keyDown(pianoNote)
+  setTimeout(() => {
+    instrument.keyUp(pianoNote)
+  }, note.duration * 1000)
+}
+
 function note2piano(note) {
   const notes = 'AbBCdDeEFgGa'
   const m = note.match(/\d+$/);
@@ -242,12 +275,132 @@ function note2piano(note) {
   return notes.indexOf(note) + octave * 12 - 3
 }
 
-function playNote(note) {
-  const pianoNote = note2piano(note)
-  instrument.keyDown(pianoNote)
-  setTimeout(() => {
-    instrument.keyUp(pianoNote)
-  }, note.duration * 1000)
+async function toggleMicrophone() {
+  try {
+    if (!isMicActive.value) {
+      await pitchDetector.start((detectedNote) => {
+        handlePitchDetection(detectedNote)
+      })
+      isMicActive.value = true
+    } else {
+      pitchDetector.stop()
+      isMicActive.value = false
+      currentPitch.value = null
+      clearTimeout(pitchTimeout.value)
+    }
+  } catch (error) {
+    console.error('Failed to toggle microphone:', error)
+    isMicActive.value = false
+  }
+}
+
+function handlePitchDetection(detectedNote) {
+  const now = Date.now()
+  
+  // Debounce pitch detection
+  if (now - lastPitchTime.value < pitchDebounce) return
+  lastPitchTime.value = now
+
+  // Update current pitch display
+  currentPitch.value = detectedNote
+  
+  // Clear silence timeout if we have a new pitch
+  if (detectedNote) {
+    clearTimeout(silenceTimeout.value)
+  } else {
+    // Start silence timeout to handle note release
+    silenceTimeout.value = setTimeout(() => {
+      handleSilence()
+    }, silenceThresh)
+    return
+  }
+
+  // Find matching notes in the hit zone
+  for (const [noteId, note] of activeHitNotes) {
+    if (note.noteName === detectedNote && !pressedKeys.has(detectedNote)) {
+      const noteEl = document.querySelector(`[data-note-id="${note.id}"]`)
+      if (noteEl) {
+        handleNoteHit(note, noteEl, detectedNote)
+      }
+      activeHitNotes.delete(noteId)
+    }
+  }
+}
+
+function handleNoteHit(note, noteEl, detectedNote) {
+  // Visual feedback
+  noteEl.style.boxShadow = `0 0 20px ${note.color}`
+  note.color = 'white'
+  
+  // Calculate accuracy
+  const startAccuracy = Math.abs((hitZoneBottom + hitZoneTop) / 2 - note.top) / hitZoneHeight
+  
+  // Track the note
+  pressedKeys.set(detectedNote, {
+    note,
+    noteEl,
+    startAccuracy,
+    startTime: Date.now(),
+    expectedDuration: note.duration / musicStore.bpm * 60000
+  })
+}
+
+function handleSilence() {
+  // Release all currently held notes
+  for (const [note] of pressedKeys) {
+    handleNoteRelease(note)
+  }
+  currentPitch.value = null
+}
+
+function handleNoteRelease(note) {
+  const keyInfo = pressedKeys.get(note)
+  if (!keyInfo) return
+
+  const { note: noteObj, startAccuracy, noteEl, startTime, expectedDuration } = keyInfo
+  const actualDuration = Date.now() - startTime
+  
+  // Ignore very short notes (probably noise)
+  if (actualDuration < minNoteDuration) {
+    pressedKeys.delete(note)
+    return
+  }
+
+  const durationAccuracy = Math.abs(actualDuration - expectedDuration) / expectedDuration
+  const points = calculatePoints(startAccuracy, durationAccuracy)
+  
+  updateScoreAndVisuals(points, noteObj, noteEl)
+  pressedKeys.delete(note)
+}
+
+function calculatePoints(startAccuracy, durationAccuracy) {
+  return Math.max(0, 1 - Math.max(startAccuracy, durationAccuracy * 0.8)) * 10
+}
+
+function updateScoreAndVisuals(points, noteObj, noteEl) {
+  if (points < 3) {
+    noteObj.color = 'rgba(128, 128, 128, 0.5)'
+    combo.value = 0
+  } else {
+    noteObj.resetColor()
+    score.value += Math.round(points)
+    combo.value++
+    showScorePopup(points, noteEl)
+  }
+  noteEl.style.boxShadow = ''
+}
+
+function showScorePopup(points, noteEl) {
+  const popup = document.createElement('div')
+  popup.classList.add('score-popup')
+  popup.textContent = `+${Math.round(points)}`
+  popup.style.left = `${noteEl.offsetLeft + noteEl.offsetWidth / 2}px`
+  popup.style.top = `${noteEl.offsetTop}px`
+  
+  noteEl.parentElement.appendChild(popup)
+  popup.addEventListener('animationend', () => {
+    popup.remove()
+  })
 }
 
 const keyboardChars = "qwertyuiop[]"
@@ -317,31 +470,12 @@ const handleKeyUp = async (event) => {
   // Check duration accuracy if key was being tracked
   const keyInfo = pressedKeys.get(key)
   if (keyInfo) {
-    const { note, startAccuracy, noteEl, startTime, expectedDuration } = keyInfo
+    const { note: noteObj, startAccuracy, noteEl, startTime, expectedDuration } = keyInfo
     const actualDuration = Date.now() - startTime
     const durationAccuracy = Math.abs(actualDuration - expectedDuration) / expectedDuration
-    const points = (1 - Math.max(startAccuracy, durationAccuracy / 1.5)) * 10
-    console.log(`Actual duration: ${actualDuration.toFixed(2)}`)
-    console.log(`Expected duration: ${expectedDuration.toFixed(2)}`)
-    console.log(`Start accuracy: ${startAccuracy.toFixed(2)}`)
-    console.log(`Duration accuracy: ${durationAccuracy.toFixed(2)}`)
-    console.log(`Points: ${points.toFixed(2)}`)
-
-    // Remove hit class
-    if (noteEl) {
-      // Add duration feedback class
-      if (points < 3) {
-        note.color = 'rgba(128, 128, 128, 0.5)'
-        combo.value = 0
-      } else {
-        note.resetColor()
-        score.value += Math.round(points)
-        combo.value++
-      }
-      noteEl.style.boxShadow = ''
-      noteEl.style.backgroundColor = ''
-    }
+    const points = calculatePoints(startAccuracy, durationAccuracy)
     
+    updateScoreAndVisuals(points, noteObj, noteEl)
     pressedKeys.delete(key)
   }
 
@@ -366,6 +500,9 @@ onMounted(() => {
 onUnmounted(() => {
   if (animationFrame) {
     cancelAnimationFrame(animationFrame)
+  }
+  if (isMicActive.value) {
+    pitchDetector.stop()
   }
   window.removeEventListener('keydown', handleKeyDown)
   window.removeEventListener('keyup', handleKeyUp)
@@ -478,6 +615,44 @@ onUnmounted(() => {
   z-index: 3;
 }
 
+.controls {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.mic-button {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: white;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.mic-button:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.mic-button.active {
+  background: rgba(255, 82, 82, 0.4);
+  border-color: rgba(255, 82, 82, 0.6);
+}
+
+.pitch-indicator {
+  background: rgba(0, 0, 0, 0.5);
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
 .progress-bar-container {
   width: 15px;
   height: 100%;
@@ -513,5 +688,29 @@ onUnmounted(() => {
 .combo {
   color: #ffff00;
   font-size: 1.2em;
+}
+</style>
+
+<style>
+.score-popup {
+  position: absolute;
+  transform: translate(-50%, -100%) scaleY(-1);
+  color: #ffff00;
+  font-size: 30px;
+  font-weight: bold;
+  pointer-events: none;
+  animation: score-popup-anim 1s ease-out forwards;
+  z-index: 100;
+}
+
+@keyframes score-popup-anim {
+  0% {
+    opacity: 1;
+    transform: translate(-50%, -100%) scaleY(-1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -200%) scaleY(-1);
+  }
 }
 </style>
