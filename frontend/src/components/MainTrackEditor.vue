@@ -12,7 +12,7 @@
             @mousemove="handleDrag($event)" @mouseup="stopDragging($event)">
             <div v-for="note in getNotesInColumn(col)" :key="note.id" class="note" :style="getNoteStyle(note)"
               @mousedown="startDragging(note, $event)"
-              @dblclick="editNoteLyric(note)">
+              @dblclick="editNoteLyric(note)" :data-note-id="note.id">
               {{ note.lyric || note.noteName }}
             </div>
           </div>
@@ -47,6 +47,7 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useMusicStore, noteColors } from '@/stores/music'
 import { Piano } from '@/sound/piano'
+import { reactive } from 'vue'
 
 const cols = ref(12)
 const barLines = ref([])
@@ -66,13 +67,9 @@ let isDraggingProgress = false
 
 const barHeight = musicStore.barPixels
 const sheetHeight = musicStore.sheetPixels
-const hitZones = {
-  perfect: 10,
-  good: 20,
-  ok: 30
-}
+const hitZoneHeight = 30
 const hitZoneTop = 100
-const hitZoneBottom = hitZoneTop - hitZones.ok
+const hitZoneBottom = hitZoneTop - hitZoneHeight
 
 // Track which notes are currently in the hit band
 const activeHitNotes = new Map()
@@ -175,8 +172,6 @@ function addNote(event, col) {
 }
 
 function updateNotes() {
-  if (!isPlaying) return
-
   const dy = musicStore.step()
 
   notes.value.forEach(note => {
@@ -194,7 +189,7 @@ function updateNotes() {
         // Miss - reset combo
         combo.value = 0
         // Visual feedback for miss
-        note.color = 'rgba(255, 0, 0, 0.5)'
+        note.color = 'rgba(128, 128, 128, 0.5)'
       }
       activeHitNotes.delete(note.id)
     }
@@ -212,6 +207,33 @@ function updateNotes() {
   })
 
   animationFrame = requestAnimationFrame(updateNotes)
+}
+
+function editNoteLyric(note) {
+  const noteEl = document.querySelector(`[data-note-id="${note.id}"]`)
+  noteEl.contentEditable = true
+  noteEl.textContent = ''
+  noteEl.focus()
+
+  const saveLyric = () => {
+    for (const note of musicStore.notes) {
+      if (note.id === noteEl.dataset.noteId) {
+        note.lyric = noteEl.textContent.trim()
+        noteEl.textContent = note.lyric
+      }
+    }
+    noteEl.contentEditable = false
+    musicStore.updateLyrics()
+  }
+  const handleKeyDown = (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      saveLyric()
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }
+  window.addEventListener('keydown', handleKeyDown)
+  noteEl.addEventListener('blur', saveLyric)
 }
 
 function note2piano(note) {
@@ -237,7 +259,12 @@ function keyboard2piano(key) {
   return note2piano(getScaleNoteForColumn(i + 1))
 }
 
+const pressedKeys = reactive(new Map()) // key -> { note, startTime }
+
 const handleKeyDown = async (event) => {
+  // Ignore if target is an input or textarea
+  if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA') return
+  
   if (event.repeat) return // Prevent key repeat
 
   const key = event.key.toLowerCase()
@@ -261,36 +288,65 @@ const handleKeyDown = async (event) => {
 
   // Check if any notes in the hit band match this key
   for (const [noteId, note] of activeHitNotes) {
-    if (note2piano(note.noteName) === pianoKey) {
-      const hitAccuracy = Math.abs((hitZoneTop + hitZoneBottom) / 2 - note.top)
-      let points
-      if (hitAccuracy <= hitZones.perfect) {
-        note.color = 'rgba(0, 255, 0, 0.5)'
-        points = 30
-      } else if (hitAccuracy <= hitZones.good) {
-        note.color = 'rgba(0, 255, 0, 0.5)'
-        points = 20
-      } else if (hitAccuracy <= hitZones.ok) {
-        note.color = 'rgba(255, 255, 0, 0.5)'
-        points = 10
-      } else {
-        note.color = 'rgba(255, 0, 0, 0.5)'
-        points = 0
+    if (note2piano(note.noteName) === pianoKey && !pressedKeys.has(key)) {
+      // Add hit class to note element and track the pressed key
+      const noteEl = document.querySelector(`[data-note-id="${note.id}"]`)
+      if (noteEl) {
+        noteEl.style.boxShadow = `0 0 10px ${noteEl.style.backgroundColor}`
+        noteEl.style.backgroundColor = '#fff'
+        const startAccuracy = Math.abs((hitZoneBottom + hitZoneTop) / 2 - note.top) / hitZoneHeight
+        pressedKeys.set(key, { 
+          note, 
+          noteEl,
+          startAccuracy,
+          startTime: Date.now(),
+          expectedDuration: note.duration * 1000 // Convert to ms
+        })
       }
-      score.value += points
-      combo.value++
       activeHitNotes.delete(noteId)
     }
   }
   await instrument.keyDown(keyboard2piano(key))
 }
 
-function handleKeyUp(event) {
+const handleKeyUp = async (event) => {
+  // Ignore if target is an input or textarea
+  if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA') return
+  
   const key = event.key.toLowerCase()
-  if (keyboardChars.includes(key)) {
-    event.preventDefault()
-    instrument.keyUp(keyboard2piano(key))
+  if (!keyboardChars.includes(key)) return
+
+  // Check duration accuracy if key was being tracked
+  const keyInfo = pressedKeys.get(key)
+  if (keyInfo) {
+    const { startAccuracy, noteEl, startTime, expectedDuration } = keyInfo
+    const actualDuration = Date.now() - startTime
+    const durationAccuracy = Math.abs(actualDuration - expectedDuration) / expectedDuration
+    const accuracy = 1 - Math.max(startAccuracy, durationAccuracy)
+
+    // Remove hit class
+    if (noteEl) {
+      // Add duration feedback class
+      if (accuracy >= 0.9) {
+        score.value += 20
+      } else if (accuracy >= 0.7) {
+        score.value += 10
+      } else {
+        noteEl.style.border = '1px solid red'
+      }
+      noteEl.style.boxShadow = ''
+      noteEl.style.backgroundColor = ''
+      
+      // // Remove duration feedback class after a short delay
+      // setTimeout(() => {
+      //   noteEl.classList.remove('good-duration', 'bad-duration')
+      // }, 200)
+    }
+    
+    pressedKeys.delete(key)
   }
+
+  await instrument.keyUp(keyboard2piano(key))
 }
 
 // Watch for play state changes
@@ -367,14 +423,14 @@ onUnmounted(() => {
   width: calc(100% - 8px);
   left: 4px;
   border-radius: 4px;
-  color: white;
   display: flex;
   align-items: center;
   justify-content: center;
+  color: white;
   font-size: 12px;
   cursor: move;
   user-select: none;
-  transition: background-color 0.2s;
+  /* transition: all 0.2s; */
   transform: scaleY(-1);
   z-index: 2;
 }
