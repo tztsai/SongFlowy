@@ -8,16 +8,16 @@ const TONE_STABILITY_COUNT = 3
 // Note frequencies for pitch detection (A4 = 440Hz)
 const NOTE_FREQUENCIES = {
   'C4': 261.63,
-  'C#4': 277.18,
+  'd4': 277.18,
   'D4': 293.66,
-  'D#4': 311.13,
+  'e4': 311.13,
   'E4': 329.63,
   'F4': 349.23,
-  'F#4': 369.99,
+  'g4': 369.99,
   'G4': 392.00,
-  'G#4': 415.30,
+  'a4': 415.30,
   'A4': 440.00,
-  'A#4': 466.16,
+  'b4': 466.16,
   'B4': 493.88,
   'C5': 523.25
 }
@@ -32,7 +32,7 @@ class Tone {
   }
 
   matches(freq) {
-    return Math.abs(this.freq / freq - 1.0) < 0.05
+    return Math.abs(this.freq / freq - 1.0) < 0.1
   }
 
   isStable() {

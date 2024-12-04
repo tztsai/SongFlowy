@@ -67,7 +67,6 @@ const instrument = new Piano()
 const musicStore = useMusicStore()
 const isPlaying = computed(() => musicStore.isPlaying)
 const isMicActive = ref(false)
-const scaleNotes = computed(() => musicStore.currentScale)
 const notes = computed(() => musicStore.notes)
 const currentProgress = computed(() => musicStore.progressPercent)
 const pitchDetector = new PitchDetector()
@@ -282,7 +281,7 @@ function playNote(note) {
 }
 
 function note2piano(note) {
-  const notes = 'AbBCdDeEFgGa'
+  const notes = 'aAbBCdDeEFgG'
   const m = note.match(/\d+$/);
   const octave = m ? parseInt(m[0]) : musicStore.baseOctave;
   note = note.replace(/\d+$/, '');
@@ -341,8 +340,8 @@ function handlePitchDetection(detectedNote) {
 function handleNoteHit(note, noteEl, detectedNote) {
   // Visual feedback
   noteEl.style.boxShadow = `0 0 20px ${note.color}`
-  note.color = 'white'
-  
+  noteEl.style.filter = 'brightness(1.8)'
+
   // Calculate accuracy
   const startAccuracy = Math.abs(hitLineY - note.top) / hitZoneHeight
   
@@ -440,11 +439,11 @@ const handleKeyDown = async (event) => {
   const pianoKey = keyboard2piano(key)
 
   // hightlight the corresponding scale note
-  for (const pitch of document.querySelectorAll('.scale-note-chip')) {
-    if (note2piano(pitch.textContent) === pianoKey) {
-      pitch.style.border = '1px solid #fff'
+  for (const chip of document.querySelectorAll('.scale-note-chip')) {
+    if (note2piano(chip.textContent) === pianoKey) {
+      chip.style.border = '1px solid #fff'
       setTimeout(() => {
-        pitch.style.border = ''
+        chip.style.border = ''
       }, 200)
       break
     }
@@ -512,7 +511,6 @@ onUnmounted(() => {
 // Check if a note is in the current scale
 function isNoteInScale(note) {
   const scale = musicStore.currentScale
-  console.log(scale, note)
   return scale ? scale.includes(note[0]) : false
 }
 </script>
