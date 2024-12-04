@@ -53,11 +53,20 @@ async function focusNextBar(barIndex) {
   }
 }
 
+function splitLyrics(value) {
+  // If string contains any CJK characters, split by character
+  if (/[\u4e00-\u9fff\u3400-\u4dbf\u20000-\u2a6df]/.test(value)) {
+    return value.split('')
+  }
+  // For ASCII text, split by word
+  return value.split(/\s+/).filter(word => word.length > 0)
+}
+
 function updateBarLyrics(barIndex, value) {
   const currentBar = barNotes.value[barIndex]
   if (!currentBar) return
 
-  const chars = value.split('')
+  const chars = splitLyrics(value)
   const maxChars = currentBar.length
   
   // If we're in the last bar, just update normally and return
@@ -67,7 +76,7 @@ function updateBarLyrics(barIndex, value) {
         musicStore.setNoteLyric(note.id, chars[index] || '')
       }
     })
-    return
+    return value.slice(0, maxChars)
   }
   
   // If we have more characters than notes in current bar
