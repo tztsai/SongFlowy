@@ -541,7 +541,6 @@ export class PitchDetector {
             this.freqBuffer.shift()
           }
           const closestNotes = this.freqBuffer.map(this.getClosestNote);
-          console.log(closestNotes)
           for (let i = 0; i < closestNotes.length - 1; i++) {
             // should remain stable in the same octave
             if (closestNotes[i][1] != closestNotes[i + 1][1]) return

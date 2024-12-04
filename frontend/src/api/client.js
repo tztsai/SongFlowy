@@ -33,13 +33,13 @@ export const apiClient = {
       ...options,
       method: 'GET'
     }
-
+    
     const response = await fetch(url, fetchOptions)
     
     if (!response.ok) {
       throw new Error(`API call failed: ${response.statusText}`)
     }
     
-    return response.json()
+    return response
   }
 }

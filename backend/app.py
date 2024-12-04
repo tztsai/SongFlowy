@@ -57,8 +57,11 @@ def upload_file():
     file.save(filepath)
     logging.info(f"File uploaded: {filename}")
     
+    # Return relative URL for frontend
+    relative_path = f'/uploads/{filename}'
+    
     if tp == 'vocal':
-        return jsonify({'filepath': str(filepath)})
+        return jsonify({'path': relative_path})
     
     try:
         # Load and process the audio file
@@ -72,7 +75,7 @@ def upload_file():
         
         return jsonify({
             'tempo': tempo,
-            'filepath': filepath
+            'path': relative_path
         })
 
     except Exception as e:
@@ -82,28 +85,11 @@ def upload_file():
 @app.route('/api/sheet', methods=['POST'])
 def generate_sheet():
     """Generate sheet music from audio file"""
-    if 'file' not in request.files:
-        return jsonify({'error': 'No file provided'}), 400
+    filepath = UPLOAD_FOLDER / request.form['file']
     
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({'error': 'No file selected'}), 400
-
     try:
-        # Save the uploaded file
-        filepath = UPLOAD_FOLDER / file.filename
-        file.save(filepath)
-        logging.info(f"File uploaded for sheet music generation: {file.filename}")
-        
-        # Load and process the audio file
-        y, sr = librosa.load(filepath)
-        
-        # Save processed audio
-        processed_path = os.path.join(UPLOAD_FOLDER, 'processed_' + file.filename)
-        sf.write(processed_path, y, sr)
-        
         # Convert to sheet music
-        score = audio_to_sheet_music(processed_path)
+        score = audio_to_sheet_music(str(filepath))
         
         # Convert to MusicXML
         xml_path = filepath.with_suffix('.xml')
@@ -115,10 +101,11 @@ def generate_sheet():
         
         return jsonify({
             'musicxml': str(xml_path),
-            'abc': str(abc_path)
+            'notes': get_score_notes(score)
         })
         
     except Exception as e:
+        print(traceback.format_exc())
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/transcribe', methods=['POST'])
@@ -160,6 +147,7 @@ def separate_audio():
 
     if not vocal_path.exists() or not bgm_path.exists():
         try:
+            file.save(str(input_path))
             from audio_separator.separator import Separator
 
             # Initialize the Separator with other configuration properties, below
@@ -179,11 +167,11 @@ def separate_audio():
             
         except Exception as e:
             logging.error("Separation failed: %s", str(e))
-            return jsonify({'error': f'Unexpected error: {str(e)}'}), 500
-    
+            return jsonify({'error': str(e)}), 500
+
     return jsonify({
-        'vocalPath': str(vocal_path),
-        'bgmPath': str(bgm_path)
+        'vocal_file': vocal_path.name,
+        'bgm_file': bgm_path.name
     })
 
 @app.route('/api/analyze_pitch', methods=['POST'])
@@ -244,6 +232,11 @@ def analyze_pitch():
     except Exception as e:
         logging.error(f"Error in pitch analysis: {str(e)}")
         return jsonify({'error': str(e)}), 500
+
+@app.route('/uploads/<path:filename>')
+def serve_file(filename):
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+
 
 def quantize_duration(duration, base_duration=0.25):
     """Quantize a duration to the nearest standard note length"""
@@ -309,9 +302,25 @@ def audio_to_sheet_music(audio_path):
     score.append(part)
     return score
 
-@app.route('/uploads/<path:filename>')
-def serve_file(filename):
-    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+def get_score_notes(score):
+    # Extract note data from the score
+    notes = []
+    
+    for note in score.flat.notes:
+        if isinstance(note, music21.note.Note):
+            # Get note name and octave
+            note_name = note.pitch.step
+            
+            # Format note name as two characters (note + octave)
+            note_name = f"{note_name}{note.pitch.octave}"
+            
+            notes.append({
+                'noteName': note_name,
+                'start': float(note.offset),  # Start time in quarter notes (beats)
+                'duration': float(note.quarterLength)  # Duration in quarter notes (beats)
+            })
+    
+    return notes
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

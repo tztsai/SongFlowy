@@ -31,20 +31,7 @@ const scaleMap = {
   'bm': ['b', 'C', 'd', 'e', 'F', 'g', 'a'],
 }
 
-export const noteColors = {
-  'D': '#8100FF',
-  'd': '#5900FF',
-  'C': '#001CFF',
-  'B': '#008BD6',
-  'b': '#00C986',
-  'A': '#00FF00',
-  'a': '#00FF00',
-  'G': '#00FF00',
-  'g': '#E0FF00',
-  'F': '#FFCD00',
-  'E': '#FF5600',
-  'e': '#FF0000'
-}
+export const noteColors = {'D': '#FF0000', 'd': '#FF8000', 'C': '#FFD700', 'B': '#00FF00', 'b': '#00FFAA', 'A': '#00FFFF', 'a': '#0080FF', 'G': '#0000FF', 'g': '#8000FF', 'F': '#FF00FF', 'E': '#FF0080', 'e': '#FF4040'}
 
 // Note prototype for consistent note creation
 export class Note {
@@ -128,8 +115,18 @@ export const useMusicStore = defineStore('music', {
     setProgress(progress) {
       this.currentBeats = this.totalBeats * progress
     },
+    setDuration(duration) {
+      this.totalBeats = Math.ceil(duration / this.bps)
+    },
     setIsPlaying(isPlaying) {
       this.isPlaying = isPlaying
+      if (!this.bgm) return
+      if (isPlaying) {
+        this.bgm.currentTime = this.currentBeats
+        this.bgm.play()
+      } else {
+        this.bgm.pause()
+      }
     },
     setKey(key) {
       key = translateNote(key.replace('m', '')) + (key.includes('m') ? 'm' : '')
@@ -204,6 +201,29 @@ export const useMusicStore = defineStore('music', {
       this.lyrics = Object.values(notesPerBar)
         .map(barNotes => barNotes.map(note => note.lyric || '_').join(''))
         .join(' ')
+    },
+    setBGMPath(path) {
+      // Stop any existing BGM
+      if (this.bgm) {
+        this.bgm.pause();
+        this.bgm = null;
+      }
+
+      // Create new audio element for BGM
+      const audio = new Audio();
+      this.bgm = audio;
+      audio.src = path;
+      audio.preload = 'auto';
+      
+      // Set up event listeners
+      audio.addEventListener('loadedmetadata', () => {
+        console.log('BGM loaded, duration:', audio.duration)
+        this.setDuration(audio.duration)
+      })
+
+      audio.addEventListener('error', (e) => {
+        console.error('Error loading BGM:', e)
+      })
     }
   },
 

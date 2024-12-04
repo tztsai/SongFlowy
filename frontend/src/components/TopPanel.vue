@@ -138,18 +138,20 @@ async function handleFileUpload(type) {
     if (type === 'combined') {
       isSeparating.value = true
       // First separate the tracks
-      const { vocalPath, bgmPath } = await apiClient.post('/api/separate', formData)
+      const { vocal_file, bgm_file } = await apiClient.post('/api/separate', formData)
+      const bgmUrl = (await apiClient.get(`/uploads/${bgm_file}`)).url
+
+      const formData2 = new FormData()
+      formData2.append('file', vocal_file)
+      const sheetData = await apiClient.post('/api/sheet', formData2)
       
-      // Now process the vocal track for notes
-      // const noteData = await apiClient.post('/api/sheet', { path: vocalPath })
-      
-      musicStore.loadNotes([])
-      musicStore.setBGMPath(bgmPath)
+      musicStore.setNotes(sheetData.notes)
+      musicStore.setBGMPath(bgmUrl)
     } else {
       const data = await apiClient.post('/api/upload', formData)
       
       if (type === 'vocal') {
-        musicStore.loadNotes([]) // Clear notes when uploading new vocal
+        musicStore.setNotes(data.notes)
       } else if (type === 'bgm') {
         musicStore.setBGMPath(data.path)
       }

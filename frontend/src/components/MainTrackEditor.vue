@@ -260,7 +260,6 @@ function addNote(event, col) {
 
 function updateNotes() {
   const dy = musicStore.step()
-  console.log('Updating notes...', dy)
   const dt = 1000 / 60  // Assuming 60fps
   const gravity = 0.0001  // Gravity constant for natural falling motion
 
