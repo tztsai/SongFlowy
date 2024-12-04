@@ -14,7 +14,7 @@
         <!-- Track Columns -->
         <div class="track-columns">
           <div class="hit-band"></div>
-          <div class="hit-line" :style="{ top: (hitZoneTop+hitZoneBottom)/2 + 'px' }"></div>
+          <div class="hit-line" :style="{ top: hitLineY + 'px' }"></div>
           <div v-for="bar in barLines" :key="'bar-' + bar.id" class="bar-line" :style="{ top: bar.y + 'px' }">
           </div>
           <div v-for="col in cols" :key="col" class="track-column" @click="addNote($event, col)"
@@ -78,6 +78,7 @@ const sheetHeight = musicStore.sheetPixels
 const hitZoneHeight = 30
 const hitZoneTop = 100
 const hitZoneBottom = hitZoneTop - hitZoneHeight
+const hitLineY = (hitZoneTop + hitZoneBottom) / 2
 const pitchDebounce = 100 // ms between pitch detections
 const silenceThresh = 200 // ms of silence before considering note released
 const minNoteDuration = 50 // ms minimum duration for a note to be considered valid
@@ -117,7 +118,7 @@ function initBarLines() {
   for (let i = 0; i < musicStore.numBars; i++) {
     barLines.value.push({
       id: i,
-      y: i * barHeight + hitZoneTop
+      y: i * barHeight + hitLineY
     })
   }
 }
@@ -136,7 +137,7 @@ function getScaleNoteForColumn(col) {
 
 function getNoteStyle(note) {
   return {
-    top: `${note.top}px`,
+    top: `${note.top + hitLineY}px`,
     height: `${note.height}px`,
     backgroundColor: note.color
   }
@@ -199,7 +200,8 @@ function updateProgressFromMouseY(event) {
 function addNote(event, col) {
   if (draggedNote) return
   const rect = event.target.getBoundingClientRect()
-  const y = rect.bottom - event.clientY
+  const y = rect.bottom - event.clientY - hitLineY
+  if (y < 0) return
   const noteName = getScaleNoteForColumn(col)
   musicStore.addNote({ noteName, duration: 1, y })
 }
@@ -213,11 +215,12 @@ function updateNotes() {
     const new_b = note.top
 
     // Check if note enters hit band
-    if (old_b > hitZoneTop && new_b <= hitZoneTop) {
+    if (old_b > hitZoneHeight/2 && new_b <= hitZoneHeight/2) {
       activeHitNotes.set(note.id, note)
     }
+
     // Check if note leaves hit band without being hit
-    if (old_b > hitZoneBottom && new_b <= hitZoneBottom) {
+    else if (old_b > -hitZoneHeight/2 && new_b <= -hitZoneHeight/2) {
       if (activeHitNotes.has(note.id)) {
         // Miss - reset combo
         combo.value = 0
@@ -226,7 +229,8 @@ function updateNotes() {
       }
       activeHitNotes.delete(note.id)
     }
-    if (note.top <= 0) {
+    
+    else if (note.top <= -hitLineY) {
       note.move(sheetHeight)
       note.resetColor()
     }
@@ -329,10 +333,7 @@ function handlePitchDetection(detectedNote) {
   for (const [noteId, note] of activeHitNotes) {
     if (note.noteName === detectedNote && !pressedKeys.has(detectedNote)) {
       const noteEl = document.querySelector(`[data-note-id="${note.id}"]`)
-      if (noteEl) {
-        handleNoteHit(note, noteEl, detectedNote)
-      }
-      activeHitNotes.delete(noteId)
+      if (noteEl) handleNoteHit(note, noteEl, detectedNote)
     }
   }
 }
@@ -343,7 +344,7 @@ function handleNoteHit(note, noteEl, detectedNote) {
   note.color = 'white'
   
   // Calculate accuracy
-  const startAccuracy = Math.abs((hitZoneBottom + hitZoneTop) / 2 - note.top) / hitZoneHeight
+  const startAccuracy = Math.abs(hitLineY - note.top) / hitZoneHeight
   
   // Track the note
   pressedKeys.set(detectedNote, {
@@ -353,6 +354,8 @@ function handleNoteHit(note, noteEl, detectedNote) {
     startTime: Date.now(),
     expectedDuration: note.duration / musicStore.bpm * 60000
   })
+
+  activeHitNotes.delete(note.id)
 }
 
 function handleSilence() {
@@ -452,19 +455,7 @@ const handleKeyDown = async (event) => {
     if (note2piano(note.noteName) === pianoKey && !pressedKeys.has(key)) {
       // Add hit class to note element and track the pressed key
       const noteEl = document.querySelector(`[data-note-id="${note.id}"]`)
-      if (noteEl) {
-        noteEl.style.boxShadow = `0 0 20px ${note.color}`
-        note.color = 'white'
-        const startAccuracy = Math.abs((hitZoneBottom + hitZoneTop) / 2 - note.top) / hitZoneHeight
-        pressedKeys.set(key, { 
-          note, 
-          noteEl,
-          startAccuracy,
-          startTime: Date.now(),
-          expectedDuration: note.duration / musicStore.bpm * 60000 // Convert to ms
-        })
-      }
-      activeHitNotes.delete(noteId)
+      if (noteEl) handleNoteHit(note, noteEl, key)
     }
   }
   await instrument.keyDown(keyboard2piano(key))
@@ -532,7 +523,7 @@ function isNoteInScale(note) {
   border-radius: 0px;
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 140px);
+  height: calc(100vh - 120px);
   --column-width: 45px;
   width: calc(var(--column-width) * var(--num-columns)); /* Add some padding for progress bar and scrollbar */
   min-width: min-content;
@@ -621,7 +612,7 @@ function isNoteInScale(note) {
 .hit-band {
   position: absolute;
   top: v-bind(hitZoneBottom + 'px');
-  height: v-bind(hitZoneTop - hitZoneBottom + 'px');
+  height: v-bind(hitZoneHeight + 'px');
   left: 0;
   right: 0;
   background: linear-gradient(to bottom,

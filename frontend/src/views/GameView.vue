@@ -16,15 +16,16 @@ import LyricsEditor from '@/components/LyricsEditor.vue';
 </template>
 
 <style>
-/* Remove Vuetify's default padding */
 #app {
-  padding: 0 !important;
+  padding: auto !important;
   margin: 0 !important;
+  background: #1E1E1E;
+  min-width: fit-content;
+  width: 100vw;
 }
 
 .v-main {
-  padding: 16px 16px !important;
-  adju
+  padding: 8px 0px !important;
 }
 </style>
 
