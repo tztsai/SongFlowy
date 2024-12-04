@@ -1,12 +1,8 @@
-const FFT_SIZE = 2048
-const BUFFER_SIZE = FFT_SIZE * 2
-const MIN_FREQ = 45
-const MAX_FREQ = 5000
-const MIN_LEVEL = -60 // dB
-const TONE_STABILITY_COUNT = 3
+import teoria from 'teoria';
+import FFT from 'fft';
 
 // Note frequencies for pitch detection (A4 = 440Hz)
-export const NOTE_FREQUENCIES = {
+export const NoteFrequencies = {
   C4: 261.63,
   d4: 277.18,
   D4: 293.66,
@@ -21,266 +17,593 @@ export const NOTE_FREQUENCIES = {
   B4: 493.88
 }
 
-Object.entries(NOTE_FREQUENCIES).forEach(([note, freq]) => {
+Object.entries(NoteFrequencies).forEach(([note, freq]) => {
   const [k, o] = note.split('')
   for (let i = -2; i <= 2; i++) {
     const octave = parseInt(o) + i
-    NOTE_FREQUENCIES[k + octave] = freq * Math.pow(2, i)
+    NoteFrequencies[k + octave] = freq * Math.pow(2, i)
   }
 })
 
-class Tone {
-  constructor(freq = 0, db = -Infinity) {
-    this.freq = freq
-    this.db = db
-    this.stableDb = db
-    this.age = 0
-    this.harmonics = new Float32Array(12) // Store up to 12 harmonics
+const getUserMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+
+const PitchAnalyzer = (function () {
+
+  var pi = Math.PI,
+    pi2 = pi * 2,
+    cos = Math.cos,
+    pow = Math.pow,
+    log = Math.log,
+    max = Math.max,
+    min = Math.min,
+    abs = Math.abs,
+    LN10 = Math.LN10,
+    sqrt = Math.sqrt,
+    atan2 = Math.atan2,
+    round = Math.round,
+    inf = 1 / 0,
+    FFT_P = 10,
+    FFT_N = 1 << FFT_P,
+    BUF_N = FFT_N * 2;
+
+  function remainder(val, div) {
+    return val - round(val / div) * div;
   }
 
-  matches(freq) {
-    return Math.abs(this.freq / freq - 1.0) < 0.1
+  function extend(obj) {
+    var args = arguments,
+      l = args.length,
+      i, n;
+
+
+    for (i = 1; i < l; i++) {
+      for (n in args[i]) {
+        if (args[i].hasOwnProperty(n)) {
+          obj[n] = args[i][n];
+        }
+      }
+    }
+
+    return obj;
   }
 
-  isStable() {
-    return this.age >= TONE_STABILITY_COUNT
+  /**
+   * A class for tones.
+   *
+   * @class
+   * @static PitchAnalyzer
+   * @param default:0.0 min:0.0 type:Number freq The frequency of the tone.
+   * @param default:-Infinity max:0.0 type:Number db The volume of the tone.
+   * @param default:-Infinity max:0.0 type:Number stabledb An average of the volume of the tone.
+   * @param default:0 min:0 type:Integer age How many times the tone has been detected in a row.
+  */
+  function Tone() {
+    this.harmonics = new Float32Array(Tone.MAX_HARM);
   }
-}
 
-class Peak {
-  constructor(freq = 0, db = -Infinity) {
-    this.freq = freq
-    this.db = db
-    this.harmonics = new Array(12)
+  Tone.prototype = {
+    freq: 0.0,
+    db: -inf,
+    stabledb: -inf,
+    age: 0,
+
+    toString: function () {
+      return '{freq: ' + this.freq + ', db: ' + this.db + ', stabledb: ' + this.stabledb + ', age: ' + this.age + '}';
+    },
+
+    /**
+     * Return an approximation of whether the tone has the same frequency as provided.
+     *
+     * @method Tone
+     * @private
+     * @arg {Number} freq The frequency to compare to.
+     * @return {Boolean} Whether it was a match.
+    */
+    matches: function (freq) {
+      return abs(this.freq / freq - 1.0) < 0.05;
+    },
+
+    harmonics: null
+  };
+
+  Tone.MIN_AGE = 2;
+  Tone.MAX_HARM = 48;
+
+  /**
+   * An internal class to manage the peak frequencies detected.
+   *
+   * @private
+   * @class
+   * @static PitchAnalyzer
+   * @arg default:0.0 min:0.0 type:Number !freq The frequency of the peak.
+   * @arg default:-Infinity max:0.0 type:Number !db The volume of the peak.
+  */
+  function Peak(freq, db) {
+    this.freq = typeof freq === 'undefined' ? this.freq : freq;
+    this.db = typeof db === 'undefined' ? this.db : db;
+
+    this.harm = new Array(Tone.MAX_HARM);
   }
 
-  static findBestMatch(peaks, pos) {
-    let best = pos
-    if (peaks[pos - 1]?.db > peaks[best].db) best = pos - 1
-    if (peaks[pos + 1]?.db > peaks[best].db) best = pos + 1
-    return peaks[best]
+  Peak.prototype = {
+    harm: null,
+
+    freq: 0.0,
+    db: -inf,
+
+    /**
+     * Resets the peak to default values.
+     *
+     * @method Peak
+     * @private
+    */
+    clear: function () {
+      this.freq = Peak.prototype.freq;
+      this.db = Peak.prototype.db;
+    }
+  };
+
+  /**
+   * Finds the best matching peak from a certain point in the array of peaks.
+   *
+   * @name match
+   * @static Peak
+   * @private
+   * @arg {Array} peaks The peaks to search from.
+   * @arg {Integer} pos The position to find the match for.
+   * @return {Peak} The best matching peak.
+  */
+  Peak.match = function (peaks, pos) {
+    var best = pos;
+
+    if (peaks[pos - 1].db > peaks[best].db) best = pos - 1;
+    if (peaks[pos + 1].db > peaks[best].db) best = pos + 1;
+
+    return peaks[best];
+  };
+
+  /**
+   * A class to analyze pitch from input data.
+   *
+   * @class PitchAnalyzer
+   * @arg {Object} !options Options to override default values.
+  */
+  function Analyzer(options) {
+    options = extend(this, options);
+
+    this.data = new Float32Array(FFT_N);
+    this.buffer = new Float32Array(BUF_N);
+    this.fftLastPhase = new Float32Array(BUF_N);
+    this.tones = [];
+
+    if (this.wnd === null) this.wnd = Analyzer.calculateWindow();
+    this.setupFFT();
   }
-}
+
+  Analyzer.prototype = {
+    wnd: null,
+    data: null,
+    fft: null,
+    tones: null,
+    fftLastPhase: null,
+    buffer: null,
+
+    offset: 0,
+    bufRead: 0,
+    bufWrite: 0,
+
+    MIN_FREQ: 45,
+    MAX_FREQ: 5000,
+
+    sampleRate: 44100,
+    step: 200,
+    oldFreq: 0.0,
+
+    peak: 0.0,
+
+    /**
+     * Gets the current peak level in dB (negative value, 0.0 = clipping).
+     *
+     * @method PitchAnalyzer
+     * @return {Number} The current peak level (db).
+    */
+    getPeak: function () {
+      return 10.0 * log(this.peak) / LN10;
+    },
+
+    findTone: function (minFreq, maxFreq) {
+      if (!this.tones.length) {
+        this.oldFreq = 0.0;
+        return null;
+      }
+
+      minFreq = typeof minFreq === 'undefined' ? 65.0 : minFreq;
+      maxFreq = typeof maxFreq === 'undefined' ? 1000.0 : maxFreq;
+
+      var db = max.apply(null, this.tones.map(Analyzer.mapdb));
+      var best = null;
+      var bestscore = 0;
+
+      for (var i = 0; i < this.tones.length; i++) {
+        if (this.tones[i].db < db - 20.0 || this.tones[i].freq < minFreq || this.tones[i].age < Tone.MIN_AGE) continue;
+        if (this.tones[i].freq > maxFreq) break;
+
+        var score = this.tones[i].db - max(180.0, abs(this.tones[i].freq - 300)) / 10.0;
+
+        if (this.oldFreq !== 0.0 && abs(this.tones[i].freq / this.oldFreq - 1.0) < 0.05) score += 10.0;
+        if (best && bestscore > score) break;
+
+        best = this.tones[i];
+        bestscore = score;
+      }
+
+      this.oldFreq = (best ? best.freq : 0.0);
+      return best;
+    },
+
+    /**
+     * Copies data to the internal buffers for processing and calculates peak.
+     * Note that if the buffer overflows, unprocessed data gets discarded.
+     *
+     * @method PitchAnalyzer
+     * @arg {Float32Array} data The input data.
+    */
+    input: function (data) {
+      var buf = this.buffer;
+      var r = this.bufRead;
+      var w = this.bufWrite;
+
+      var overflow = false;
+
+      for (var i = 0; i < data.length; i++) {
+        var s = data[i];
+        var p = s * s;
+
+        if (p > this.peak) this.peak = p; else this.peak *= 0.999;
+
+        buf[w] = s;
+
+        w = (w + 1) % BUF_N;
+
+        if (w === r) overflow = true;
+      }
+
+      this.bufWrite = w;
+      if (overflow) this.bufRead = (w + 1) % BUF_N;
+    },
+
+    /**
+     * Processes available data and calculates tones.
+     *
+     * @method PitchAnalyzer
+    */
+    process: function () {
+      while (this.calcFFT()) this.calcTones();
+    },
+
+    /**
+     * Matches new tones against old ones, merging similar ones.
+     *
+     * @method PitchAnalyzer
+     * @private
+    */
+    mergeWithOld: function (tones) {
+      var i, n;
+
+      tones.sort(function (a, b) { return a.freq < b.freq ? -1 : a.freq > b.freq ? 1 : 0; });
+
+      for (i = 0, n = 0; i < this.tones.length; i++) {
+        while (n < tones.length && tones[n].freq < this.tones[i].freq) n++;
+
+        if (n < tones.length && tones[n].matches(this.tones[i].freq)) {
+          tones[n].age = this.tones[i].age + 1;
+          tones[n].stabledb = 0.8 * this.tones[i].stabledb + 0.2 * tones[n].db;
+          tones[n].freq = 0.5 * (this.tones[i].freq + tones[n].freq);
+        } else if (this.tones[i].db > -80.0) {
+          tones.splice(n, 0, this.tones[i]);
+          tones[n].db -= 5.0;
+          tones[n].stabledb -= 0.1;
+        }
+
+      }
+    },
+
+    /**
+     * Calculates the tones from the FFT data.
+     *
+     * @method PitchAnalyzer
+     * @private
+    */
+    calcTones: function () {
+      var freqPerBin = this.sampleRate / FFT_N,
+        phaseStep = pi2 * this.step / FFT_N,
+        normCoeff = 1.0 / FFT_N,
+        minMagnitude = pow(10, -100.0 / 20.0) / normCoeff,
+        kMin = ~~max(1, this.MIN_FREQ / freqPerBin),
+        kMax = ~~min(FFT_N / 2, this.MAX_FREQ / freqPerBin),
+        peaks = [],
+        tones = [],
+        k, k2, p, n, t, count, freq, magnitude, phase, delta, prevdb, db, bestDiv,
+        bestScore, div, score;
+
+      for (k = 0; k <= kMax; k++) {
+        peaks.push(new Peak());
+      }
+
+      for (k = 1, k2 = 2; k <= kMax; k++, k2 += 2) {
+        /* complex absolute */
+        magnitude = sqrt(this.fft[k2] * this.fft[k2] + this.fft[k2 + 1] * this.fft[k2 + 1]);
+        /* complex arguscosine */
+        phase = atan2(this.fft[k2 + 1], this.fft[k2]);
+
+        delta = phase - this.fftLastPhase[k];
+        this.fftLastPhase[k] = phase;
+
+        delta -= k * phaseStep;
+        delta = remainder(delta, pi2);
+        delta /= phaseStep;
+
+        freq = (k + delta) * freqPerBin;
+
+        if (freq > 1.0 && magnitude > minMagnitude) {
+          peaks[k].freq = freq;
+          peaks[k].db = 20.0 * log(normCoeff * magnitude) / LN10;
+        }
+      }
+
+      prevdb = peaks[0].db;
+
+      for (k = 1; k < kMax; k++) {
+        db = peaks[k].db;
+        if (db > prevdb) peaks[k - 1].clear();
+        if (db < prevdb) peaks[k].clear();
+        prevdb = db;
+      }
+
+      for (k = kMax - 1; k >= kMin; k--) {
+        if (peaks[k].db < -70.0) continue;
+
+        bestDiv = 1;
+        bestScore = 0;
+
+        for (div = 2; div <= Tone.MAX_HARM && k / div > 1; div++) {
+          freq = peaks[k].freq / div;
+          score = 0;
+
+          for (n = 1; n < div && n < 8; n++) {
+            p = Peak.match(peaks, ~~(k * n / div));
+            score--;
+            if (p.db < -90.0 || abs(p.freq / n / freq - 1.0) > 0.03) continue;
+            if (n === 1) score += 4;
+            score += 2;
+          }
+
+          if (score > bestScore) {
+            bestScore = score;
+            bestDiv = div;
+          }
+        }
+
+        t = new Tone();
+
+        count = 0;
+
+        freq = peaks[k].freq / bestDiv;
+
+        t.db = peaks[k].db;
+
+        for (n = 1; n <= bestDiv; n++) {
+          p = Peak.match(peaks, ~~(k * n / bestDiv));
+
+          if (abs(p.freq / n / freq - 1.0) > 0.03) continue;
+
+          if (p.db > t.db - 10.0) {
+            t.db = max(t.db, p.db);
+            count++;
+            t.freq += p.freq / n;
+          }
+
+          t.harmonics[n - 1] = p.db;
+          p.clear();
+        }
+
+        t.freq /= count;
+
+        if (t.db > -50.0 - 3.0 * count) {
+          t.stabledb = t.db;
+          tones.push(t);
+        }
+      }
+
+      this.mergeWithOld(tones);
+
+      this.tones = tones;
+    },
+
+    /**
+     * Calculates the FFT for the input signal, if enough is available.
+     *
+     * @method PitchAnalyzer
+     * @private
+     * @return {Boolean} Whether there was enough data to process.
+    */
+    calcFFT: function () {
+      var r = this.bufRead;
+
+      if ((BUF_N + this.bufWrite - r) % BUF_N <= FFT_N) return false;
+
+      for (var i = 0; i < FFT_N; i++) {
+        this.data[i] = this.buffer[(r + i) % BUF_N];
+      }
+
+      this.bufRead = (r + this.step) % BUF_N;
+
+      this.processFFT(this.data, this.wnd);
+
+      return true;
+    },
+
+    setupFFT: function () {
+      if (!FFT || !FFT.complex) {
+        throw Error("FFT module not properly loaded");
+      }
+
+      const RFFT = FFT.complex;
+      this.rfft = new RFFT(FFT_N, false);
+      this.fft = new Float32Array(FFT_N * 2);
+      this.fftInput = new Float32Array(FFT_N);
+    },
+
+    processFFT: function (data, wnd) {
+      var i;
+
+      for (i = 0; i < data.length; i++) {
+        this.fftInput[i] = data[i] * wnd[i];
+      }
+
+      this.rfft.simple(this.fft, this.fftInput, 'real');
+    }
+  };
+
+  Analyzer.mapdb = function (e) {
+    return e.db;
+  };
+
+  Analyzer.Tone = Tone;
+
+  /**
+   * Calculates a Hamming window for the size FFT_N, scaled up with FFT_N.
+   *
+   * @static PitchAnalyzer
+   * @return {Float32Array} The hamming window.
+  */
+  Analyzer.calculateWindow = function () {
+    var i,
+      w = new Float32Array(FFT_N);
+
+    for (i = 0; i < FFT_N; i++) {
+      w[i] = 0.53836 - 0.46164 * cos(pi2 * i / (FFT_N - 1));
+    }
+
+    return w;
+  };
+
+  return Analyzer;
+
+}());
 
 export class PitchDetector {
   constructor() {
-    this.audioContext = null
-    this.analyser = null
-    this.mediaStream = null
-    this.isListening = false
-    this.onPitch = null
-    
-    this.data = new Float32Array(FFT_SIZE)
-    this.buffer = new Float32Array(BUFFER_SIZE)
-    this.window = this.calculateWindow()
-    this.fftLastPhase = new Float32Array(BUFFER_SIZE)
-    this.tones = []
-    
-    this.sampleRate = 44100
-    this.bufferPos = 0
-    this.lastPitch = 0
-  }
-
-  calculateWindow() {
-    const window = new Float32Array(FFT_SIZE)
-    for (let i = 0; i < FFT_SIZE; i++) {
-      // Hamming window
-      window[i] = 0.54 - 0.46 * Math.cos(2 * Math.PI * i / (FFT_SIZE - 1))
-    }
-    return window
+    this.audioContext = null;
+    this.analyzer = null;
+    this.stream = null;
+    this.isListening = false;
+    this.onPitch = null;
+    this.pitchAnalyzer = null;
+    this.lastValidPitch = null;
+    this.confidenceThreshold = -50;
+    this.freqBuffer = [];
+    this.freqBufferSize = 3;
   }
 
   async start(callback) {
-    if (this.isListening) return
-    
+    if (this.isListening) return;
+
     try {
-      this.audioContext = new (window.AudioContext || window.webkitAudioContext)()
-      this.mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      
-      const source = this.audioContext.createMediaStreamSource(this.mediaStream)
-      this.analyser = this.audioContext.createAnalyser()
-      this.analyser.fftSize = FFT_SIZE
-      source.connect(this.analyser)
-      
-      this.onPitch = callback
-      this.isListening = true
-      this.detectPitch()
+      // Initialize audio context
+      this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+      // Get microphone stream
+      this.stream = await getUserMedia({ audio: true });
+
+      // Create analyzer with correct sample rate
+      this.pitchAnalyzer = new PitchAnalyzer();
+      this.pitchAnalyzer.sampleRate = this.audioContext.sampleRate;
+
+      // Create audio source
+      const source = this.audioContext.createMediaStreamSource(this.stream);
+
+      // Create audio processor
+      const processor = this.audioContext.createScriptProcessor(4096, 1, 1);
+
+      processor.onaudioprocess = (e) => {
+        const input = e.inputBuffer.getChannelData(0);
+        this.pitchAnalyzer.input(input);
+        this.pitchAnalyzer.process();
+        const tone = this.pitchAnalyzer.findTone();
+        const freq = tone?.freq;
+
+        if (tone === null || tone.db < this.confidenceThreshold) {
+          callback({ freq: null, note: null, db: null })
+        } else {
+          this.freqBuffer.push(freq)
+          if (this.freqBuffer.length > this.freqBufferSize) {
+            this.freqBuffer.shift()
+          }
+          const closestNotes = this.freqBuffer.map(this.getClosestNote);
+          console.log(closestNotes)
+          for (let i = 0; i < closestNotes.length - 1; i++) {
+            // should remain stable in the same octave
+            if (closestNotes[i][1] != closestNotes[i + 1][1]) return
+          }
+          callback({
+            freq,
+            note: this.getClosestNote(freq),
+            db: tone.db
+          });
+        }
+      };
+
+      // Connect the audio nodes
+      source.connect(processor);
+      processor.connect(this.audioContext.destination);
+
+      this.isListening = true;
+      this.onPitch = callback;
+
     } catch (error) {
-      console.error('Error accessing microphone:', error)
-      throw error
+      console.error('Error accessing microphone:', error);
+      throw error;
     }
   }
 
   stop() {
-    if (!this.isListening) return
-    
-    if (this.mediaStream) {
-      this.mediaStream.getTracks().forEach(track => track.stop())
+    if (!this.isListening) return;
+
+    if (this.stream) {
+      this.stream.getTracks().forEach(track => track.stop());
     }
     if (this.audioContext) {
-      this.audioContext.close()
+      this.audioContext.close();
     }
-    
-    this.isListening = false
-    this.onPitch = null
-    this.tones = []
-    this.lastPitch = 0
-  }
 
-  detectPitch() {
-    if (!this.isListening) return
-
-    // Get time-domain data
-    this.analyser.getFloatTimeDomainData(this.data)
-    
-    // Apply window function
-    for (let i = 0; i < FFT_SIZE; i++) {
-      this.buffer[i] = this.data[i] * this.window[i]
-    }
-    
-    // Perform FFT
-    const fft = new Float32Array(FFT_SIZE)
-    this.performFFT(this.buffer, fft)
-    
-    // Find peaks in frequency domain
-    const peaks = this.findPeaks(fft)
-    
-    // Analyze tones
-    this.analyzeTones(peaks)
-    
-    // Find most prominent tone
-    const tone = this.findBestTone()
-    const freq = tone?.freq
-    
-    if (tone && tone.isStable() && tone.db > MIN_LEVEL)
-      this.lastPitch = freq
-
-    this.onPitch({ note: this.getClosestNote(freq), freq })
-    
-    requestAnimationFrame(() => this.detectPitch())
-  }
-
-  performFFT(input, output) {
-    // Simple FFT implementation using Web Audio API's analyser
-    this.analyser.getFloatFrequencyData(output)
-    
-    // Convert to magnitude
-    for (let i = 0; i < output.length; i++) {
-      output[i] = Math.pow(10, output[i] / 20) // Convert from dB to magnitude
-    }
-  }
-
-  findPeaks(fft) {
-    const peaks = []
-    const minFreqBin = Math.floor(MIN_FREQ * FFT_SIZE / this.sampleRate)
-    const maxFreqBin = Math.ceil(MAX_FREQ * FFT_SIZE / this.sampleRate)
-    
-    for (let i = minFreqBin; i < maxFreqBin - 1; i++) {
-      if (fft[i] > fft[i-1] && fft[i] > fft[i+1]) {
-        const freq = i * this.sampleRate / FFT_SIZE
-        const db = 20 * Math.log10(fft[i])
-        if (db > MIN_LEVEL) {
-          peaks.push(new Peak(freq, db))
-        }
-      }
-    }
-    
-    return peaks
-  }
-
-  analyzeTones(peaks) {
-    const newTones = []
-    
-    // Find fundamental frequencies
-    for (const peak of peaks) {
-      let isHarmonic = false
-      for (const tone of newTones) {
-        const harmonic = Math.round(peak.freq / tone.freq)
-        if (harmonic > 1 && harmonic <= 12 && Math.abs(peak.freq / tone.freq - harmonic) < 0.05) {
-          tone.harmonics[harmonic - 1] = peak.db
-          isHarmonic = true
-          break
-        }
-      }
-      
-      if (!isHarmonic) {
-        newTones.push(new Tone(peak.freq, peak.db))
-      }
-    }
-    
-    // Update existing tones
-    this.tones = this.mergeWithOldTones(newTones)
-  }
-
-  mergeWithOldTones(newTones) {
-    const merged = []
-    
-    // Match new tones with old ones
-    for (const newTone of newTones) {
-      let foundMatch = false
-      for (const oldTone of this.tones) {
-        if (oldTone.matches(newTone.freq)) {
-          oldTone.freq = newTone.freq
-          oldTone.db = newTone.db
-          oldTone.stableDb = (oldTone.stableDb * oldTone.age + newTone.db) / (oldTone.age + 1)
-          oldTone.age++
-          merged.push(oldTone)
-          foundMatch = true
-          break
-        }
-      }
-      if (!foundMatch) {
-        merged.push(newTone)
-      }
-    }
-    
-    return merged
-  }
-
-  findBestTone() {
-    let best = null
-    let bestScore = -Infinity
-    
-    for (const tone of this.tones) {
-      if (tone.db < MIN_LEVEL) continue
-      
-      // Calculate score based on volume and stability
-      let score = tone.db
-      if (tone.isStable()) score += 10
-      if (tone.freq === this.lastPitch) score += 5
-      
-      // Prefer frequencies closer to last pitch
-      if (this.lastPitch > 0) {
-        const ratio = tone.freq / this.lastPitch
-        if (ratio > 0.5 && ratio < 2.0) {
-          score += 5 * (1.0 - Math.abs(Math.log2(ratio)))
-        }
-      }
-      
-      if (score > bestScore) {
-        bestScore = score
-        best = tone
-      }
-    }
-    
-    return best
+    this.isListening = false;
+    this.onPitch = null;
+    this.pitchAnalyzer = null;
   }
 
   getClosestNote(freq) {
-    if (!freq) return null
-    
-    let minDiff = Infinity
-    let closestNote = null
-    
-    for (const [note, noteFreq] of Object.entries(NOTE_FREQUENCIES)) {
-      const diff = Math.abs(Math.log2(freq / noteFreq))
-      if (diff < minDiff) {
-        minDiff = diff
-        closestNote = note
+    if (!freq) return null;
+
+    try {
+      const note = teoria.note(teoria.note.fromFrequency(freq).note.coord)
+      let name = note.name().toUpperCase()
+      const accidental = note.accidental()
+      const octave = note.octave()
+
+      if (accidental === 'b') {
+        name = name.toLowerCase()
+      } else if (accidental === '#') {
+        name = String.fromCharCode(name.charCodeAt(0) + 1).toLowerCase()
+        if (name === 'h') {
+          name = 'a'
+        }
       }
+
+      return name + octave
+    } catch (err) {
+      console.warn('Error getting closest note:', err)
+      return null
     }
-    
-    // Only return note if it's within 50 cents (half semitone)
-    return minDiff < 0.5 ? closestNote : null
   }
 }

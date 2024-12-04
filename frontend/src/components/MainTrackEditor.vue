@@ -5,7 +5,7 @@
         {{ isMicActive ? '🎤 Stop' : '🎤 Start' }}
       </button>
       <div v-if="isMicActive" class="pitch-indicator" :style="pitchIndicatorStyle">
-        {{ currentPitch || 'No pitch detected' }}
+        {{ pitchDetector.getClosestNote(currentPitch) || 'No pitch detected' }}
       </div>
     </div>
     <v-container fluid class="track-container">
@@ -59,7 +59,7 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useMusicStore, noteColors, allNotes } from '@/stores/music'
 import { Piano } from '@/sound/piano'
-import { PitchDetector, NOTE_FREQUENCIES } from '@/sound/pitch'
+import { PitchDetector, NoteFrequencies } from '@/sound/pitch'
 import { reactive } from 'vue'
 
 const cols = ref(18)
@@ -74,6 +74,7 @@ const notes = computed(() => musicStore.notes)
 const currentProgress = computed(() => musicStore.progressPercent)
 const pitchDetector = new PitchDetector()
 const currentPitch = ref(null)
+const lastPitchTime = ref(0)
 const pitchTimeout = ref(null)
 const barHeight = musicStore.barPixels
 const sheetHeight = musicStore.sheetPixels
@@ -82,9 +83,7 @@ const hitZoneHeight = 30
 const hitZoneTop = 100
 const hitZoneBottom = hitZoneTop - hitZoneHeight
 const hitLineY = (hitZoneTop + hitZoneBottom) / 2
-const pitchDebounce = 10 // ms between pitch detections
-const silenceThresh = 200 // ms of silence before considering note released
-const minNoteDuration = 50 // ms minimum duration for a note to be considered valid
+const silenceThresh = 2000 // ms of silence before considering note released
 const pitchTrailCanvas = ref(null)
 const pitchHistory = ref([])
 const pitchLifeSpan = 3000  // ms
@@ -112,7 +111,7 @@ function freqToX(freq) {
     freq = NOTE_FREQUENCIES[freq]
   }
   const baseKey = musicStore.currentKey[0] + musicStore.baseOctave
-  const baseFreq = NOTE_FREQUENCIES[baseKey]
+  const baseFreq = NoteFrequencies[baseKey]
   const colWidth = document.querySelector('.main-track-area').offsetWidth / cols.value
   const relativePos = Math.log2(freq / baseFreq) * 12 + 0.5
   return Math.max(0, Math.min(cols.value, relativePos)) * colWidth
@@ -122,34 +121,36 @@ function freqToX(freq) {
 function updatePitchTrail(freq) {
   if (!pitchTrailCanvas.value || !freq) return
 
-  // Add new pitch to history
+  const now = Date.now()
+
+  // Add new pitch to history with initial drift velocity
   pitchHistory.value.push({ 
     freq,
     x: freqToX(freq),
-    time: Date.now(),
-    drift: 0
+    time: now,
+    drift: 0,
+    velocity: 0  // Initial falling velocity
   })
 
   // Remove old pitches
-  pitchHistory.value = pitchHistory.value.filter(p => Date.now() - p.time < pitchLifeSpan)
+  pitchHistory.value = pitchHistory.value.filter(p => now - p.time < pitchLifeSpan)
 }
 
 // Compute pitch dot position and style
 const pitchDotStyle = computed(() => {
   if (!currentPitch.value) return {}
   const x = freqToX(currentPitch.value)
+  const note = pitchDetector.getClosestNote(currentPitch.value)
   return {
     left: `${x}px`,
     transform: 'translate(-50%, -50%)',
-    boxShadow: `0 0 10px 5px ${noteColors[currentPitch.value[0]] || '#fff'}`
+    boxShadow: `0 0 10px 5px ${noteColors[note[0]] || '#fff'}`
   }
 })
 
 // Track which notes are currently in the hit band
 const activeHitNotes = new Map()
 
-let lastPitchTime = ref(0)
-let silenceTimeout = ref(null)
 let draggedNote = null
 let dragStartY = 0
 let animationFrame = null
@@ -259,6 +260,9 @@ function addNote(event, col) {
 
 function updateNotes() {
   const dy = musicStore.step()
+  console.log('Updating notes...', dy)
+  const dt = 1000 / 60  // Assuming 60fps
+  const gravity = 0.0001  // Gravity constant for natural falling motion
 
   notes.value.forEach(note => {
     const old_b = note.top
@@ -294,8 +298,13 @@ function updateNotes() {
     }
   })
 
+  animationFrame = requestAnimationFrame(updateNotes)
+  return
+
+  // Update pitch trail with physics
   pitchHistory.value.forEach(p => {
-    p.drift += dy
+    p.velocity += gravity * dt  // Increase falling speed
+    p.drift += p.velocity * dt + dy  // Add both gravity and scroll movement
   })
 
   const ctx = pitchTrailCanvas.value.getContext('2d')
@@ -308,11 +317,11 @@ function updateNotes() {
   if (canvas.width !== parentWidth || canvas.height !== trackColumns.offsetHeight) {
     canvas.width = parentWidth
     canvas.height = trackColumns.offsetHeight
-    canvas.style.top = `-${hitZoneTop}px`  // Align with hit zone top
   }
 
-  // Clear canvas
-  ctx.clearRect(0, 0, canvas.width, canvas.height)
+  // Clear canvas with a slight fade effect for smoother trails
+  ctx.fillStyle = 'rgba(0, 0, 0, 0)'
+  ctx.fillRect(0, 0, canvas.width, canvas.height)
 
   // Sort pitches by age so newer ones are drawn on top
   const sortedPitches = [...pitchHistory.value].sort((a, b) => a.time - b.time)
@@ -325,7 +334,7 @@ function updateNotes() {
     // Calculate alpha based on both age and position
     const ageAlpha = 1 - age / pitchLifeSpan
     const driftAlpha = Math.max(0, 1 - normalizedDrift * 1.5) // Fade out as it falls
-    const alpha = Math.min(ageAlpha, driftAlpha) * 0.6
+    const alpha = Math.min(ageAlpha, driftAlpha) * 0.8  // Increased visibility
 
     // Skip if fully transparent
     if (alpha <= 0) return
@@ -333,29 +342,34 @@ function updateNotes() {
     const closestNote = pitchDetector.getClosestNote(pitch.freq)
     const color = closestNote ? noteColors[closestNote[0]] : '#fff'
     
-    // Calculate y position relative to hit zone top
-    const y = hitZoneTop - pitch.drift
+    // Calculate y position starting from 0 (hit line) and moving down
+    const y = pitch.drift
     
     // Skip if outside visible area (with some padding)
     if (y < -20 || y > canvas.height + 20) return
     
-    // Create gradient for each point
+    // Create gradient for each point with improved glow effect
     const gradient = ctx.createRadialGradient(
       pitch.x, y, 0,
-      pitch.x, y, 10
+      pitch.x, y, 15  // Increased radius for better visibility
     )
     gradient.addColorStop(0, `${color}`)
+    gradient.addColorStop(0.5, `${color}88`)  // Semi-transparent middle
     gradient.addColorStop(1, `${color}00`)
     
     ctx.fillStyle = gradient
     ctx.globalAlpha = alpha
     ctx.beginPath()
-    ctx.arc(pitch.x, y, 10, 0, Math.PI * 2)
+    ctx.arc(pitch.x, y, 15, 0, Math.PI * 2)
+    ctx.fill()
+
+    // Add a small core for better visibility
+    ctx.beginPath()
+    ctx.arc(pitch.x, y, 5, 0, Math.PI * 2)
+    ctx.fillStyle = color
     ctx.fill()
   })
   ctx.globalAlpha = 1
-
-  animationFrame = requestAnimationFrame(updateNotes)
 }
 
 function editNoteLyric(note) {
@@ -398,7 +412,7 @@ function note2piano(note) {
   const m = note.match(/\d+$/);
   const octave = m ? parseInt(m[0]) : musicStore.baseOctave;
   note = note.replace(/\d+$/, '');
-  return notes.indexOf(note) + octave * 12 - 3
+  return notes.indexOf(note) + (octave + 1) * 12
 }
 
 async function toggleMicrophone() {
@@ -418,24 +432,16 @@ async function toggleMicrophone() {
   }
 }
 
-function handlePitchDetection({ note, freq }) {
-  // Clear any existing silence timeout
-  if (pitchTimeout.value) {
-    clearTimeout(pitchTimeout.value)
-    pitchTimeout.value = null
-  }
-
+function handlePitchDetection({ freq, note }) {
   if (!freq) {
-    // Start silence timeout
-    pitchTimeout.value = setTimeout(handleSilence, silenceThresh)
+    if (Date.now() - lastPitchTime.value > silenceThresh) {
+      currentPitch.value = null
+    }
     return
   }
 
-  // Debounce the pitch updates
-  if (Date.now() - lastPitchTime.value < pitchDebounce) return
   lastPitchTime.value = Date.now()
-
-  currentPitch.value = note
+  currentPitch.value = freq
   updatePitchTrail(freq)
 
   // Check for note hits
@@ -465,34 +471,6 @@ function handleNoteHit(note, noteEl, detectedNote) {
   })
 
   activeHitNotes.delete(note.id)
-}
-
-function handleSilence() {
-  // Release all currently held notes
-  for (const [note] of pressedKeys) {
-    handleNoteRelease(note)
-  }
-  currentPitch.value = null
-}
-
-function handleNoteRelease(note) {
-  const keyInfo = pressedKeys.get(note)
-  if (!keyInfo) return
-
-  const { note: noteObj, startAccuracy, noteEl, startTime, expectedDuration } = keyInfo
-  const actualDuration = Date.now() - startTime
-  
-  // Ignore very short notes (probably noise)
-  if (actualDuration < minNoteDuration) {
-    pressedKeys.delete(note)
-    return
-  }
-
-  const durationAccuracy = Math.abs(actualDuration - expectedDuration) / expectedDuration
-  const points = calculatePoints(startAccuracy, durationAccuracy)
-  
-  updateScoreAndVisuals(points, noteObj, noteEl)
-  pressedKeys.delete(note)
 }
 
 function calculatePoints(startAccuracy, durationAccuracy) {
@@ -739,15 +717,16 @@ onUnmounted(() => {
   background: radial-gradient(circle, #fff 0%, rgba(255,255,255,0.3) 70%, transparent 100%);
   border-radius: 50%;
   z-index: 4;
-  transition: all 0.3s ease-out;
+  transition: all 0.4s ease-out;
 }
 
 .pitch-trail {
   position: absolute;
-  left: 0;
+  bottom: 0px;
   width: 100%;
   pointer-events: none;
   z-index: 3;
+  transform: scaleY(-1);  /* Flip the canvas to match note direction */
 }
 
 .controls {

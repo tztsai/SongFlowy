@@ -101,7 +101,7 @@ export const useMusicStore = defineStore('music', {
     isPlaying: false,
     isLooping: false,
     currentKey: 'C',
-    baseOctave: 4,
+    baseOctave: 3,
     notes: [],
     lyrics: '',  // Add lyrics property
   }),

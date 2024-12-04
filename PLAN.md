@@ -20,7 +20,7 @@
   - Interactive music tab
   - Lyrics editor with timestamps
   - Style control panel
-- [ ] Real-time Input System
+- [x] Real-time Input System
   - Keyboard-based note input (A-K mapping)
   - MIDI device support
   - Vocal input and pitch detection (comparison with notes)
@@ -28,6 +28,9 @@
   - Visual feedback for correct/incorrect notes
 
 ## Phase 3: Music Style and Pattern Editor
+- [ ] Use Teoria.js / Tonal.js for music theory
+  - https://github.com/saebekassebil/teoria
+  - https://github.com/tonaljs/tonal
 - [ ] Style Control Panel
   - Instrument selection (Piano, Guitar, etc.)
   - Pattern presets (Arpeggio, Strumming)
