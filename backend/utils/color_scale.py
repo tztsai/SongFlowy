@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
+import plotly.express as px
 import colour
 
 def rgb_to_wavelength(R, G, B):
@@ -48,13 +49,37 @@ def wavelength_to_rgb(wavelength_nm):
     return (np.clip(rgb, 0, 1) * 255).astype(int)
 
 def get_note_colors():
-    """Get RGB colors for 12 notes starting from D4."""
-
+    """Get colors for each note in the chromatic scale."""
     notes = ['D', 'd', 'C', 'B', 'b', 'A', 'a', 'G', 'g', 'F', 'E', 'e']
 
-    # colors = wavelength_to_rgb(np.linspace(440, 622, 12))
-    colors = wavelength_to_rgb(np.logspace(np.log10(440), np.log10(622), 12))
+    # Custom color palette designed for musical notes
+    # Using a combination of warm and cool colors with good contrast
+    hex_colors = [
+        '#FF0000',  # Bright Red
+        '#FF8000',  # Orange
+        '#FFD700',  # Gold
+        '#00FF00',  # Bright Green
+        '#00FFAA',  # Spring Green
+        '#00FFFF',  # Cyan
+        '#0080FF',  # Sky Blue
+        '#0000FF',  # Blue
+        '#8000FF',  # Purple
+        '#FF00FF',  # Magenta
+        '#FF0080',  # Pink
+        '#FF4040',  # Light Red
+    ]
     
+    colors = []
+    for color in hex_colors:
+        # Convert hex to RGB
+        color = color.lstrip('#')
+        r = int(color[0:2], 16)
+        g = int(color[2:4], 16)
+        b = int(color[4:6], 16)
+        colors.append((r, g, b))
+
+    # colors = wavelength_to_rgb(np.logspace(np.log10(440), np.log10(622), 12))
+
     return list(zip(notes, colors))
 
 def visualize_color_wheel(colors):

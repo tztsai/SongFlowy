@@ -141,13 +141,9 @@ async function handleFileUpload(type) {
       const { vocalPath, bgmPath } = await apiClient.post('/api/separate', formData)
       
       // Now process the vocal track for notes
-      const noteData = await apiClient.post('/api/sheet', {
-        path: vocalPath
-      }, {
-        headers: { 'Content-Type': 'application/json' }
-      })
+      // const noteData = await apiClient.post('/api/sheet', { path: vocalPath })
       
-      musicStore.loadNotes(noteData.notes)
+      musicStore.loadNotes([])
       musicStore.setBGMPath(bgmPath)
     } else {
       const data = await apiClient.post('/api/upload', formData)

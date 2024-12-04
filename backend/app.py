@@ -16,7 +16,17 @@ import json
 logging.basicConfig(level=logging.INFO)
 
 app = Flask(__name__)
-CORS(app, resources={r"/*": {"origins": "*"}})  # Allow all origins during development
+
+# Enable CORS for all routes
+CORS(app)
+
+# Add CORS headers to all responses
+@app.after_request
+def after_request(response):
+    response.headers.add('Access-Control-Allow-Origin', '*')
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+    return response
 
 UPLOAD_FOLDER = Path('uploads')
 UPLOAD_FOLDER.mkdir(exist_ok=True)
@@ -161,8 +171,8 @@ def separate_audio():
 
             outputs = separator.separate(
                 str(input_path),
-                primary_output_name=bgm_path.stem,
-                secondary_output_name=vocal_path.stem
+                primary_output_name=bgm_path.stem.split('.')[0],
+                secondary_output_name=vocal_path.stem.split('.')[0]
             )
 
             logging.info("Separation completed: %s", outputs)
