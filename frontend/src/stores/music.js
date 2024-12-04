@@ -57,13 +57,14 @@ export class Note {
     // start and duration are in beats
     this._start = start
     this._duration = duration
+    this._offset = 0
   }
 
   get start() { return this._start }
   get end() { return this._start + this._duration }
   get duration() { return this._duration }
-  get top() { return this.start * beatPixels }
-  get bottom() { return this.end * beatPixels }
+  get top() { return this.start * beatPixels + this._offset }
+  get bottom() { return this.end * beatPixels + this._offset }
   get height() { return this.duration * beatPixels }
 
   set start(start) {
@@ -82,6 +83,9 @@ export class Note {
     this.end = bottom / beatPixels
   }
 
+  move(offset) {
+    this._offset += offset
+  }
   resetColor() {
     this.color = noteColors[this.noteName[0]]
   }
@@ -154,7 +158,17 @@ export const useMusicStore = defineStore('music', {
           return
         }
       }
-      this.notes.push(note)
+      // Insert note at the correct position to keep this.notes sorted by start
+      let inserted = false
+      for (let i = 0; i < this.notes.length; i++) {
+        if (this.notes[i].start > note.start) {
+          this.notes.splice(i, 0, note)
+          inserted = true
+          break
+        }
+      }
+      if (!inserted) 
+        this.notes.push(note)
     },
     updateNote(id, note) {
       const index = this.notes.findIndex(note => note.id === id)
@@ -187,12 +201,7 @@ export const useMusicStore = defineStore('music', {
 
       // Sort notes within each bar and create lyrics string
       this.lyrics = Object.values(notesPerBar)
-        .map(barNotes => 
-          barNotes
-            .sort((a, b) => a.start - b.start)
-            .map(note => note.lyric || '_')
-            .join('')
-        )
+        .map(barNotes => barNotes.map(note => note.lyric || '_').join(''))
         .join(' ')
     }
   },

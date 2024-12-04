@@ -32,10 +32,8 @@ const barNotes = computed(() => {
     bars[barIndex].push(note)
   })
 
-  // Sort bars by index and sort notes within each bar
-  return Object.entries(bars)
-    .sort(([a], [b]) => Number(a) - Number(b))
-    .map(([_, notes]) => notes.sort((a, b) => a.start - b.start))
+  // Convert to array maintaining bar order
+  return Object.keys(bars).map(barIndex => bars[barIndex])
 })
 
 function isLastBar(barIndex) {

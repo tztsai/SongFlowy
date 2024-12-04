@@ -153,7 +153,13 @@ function updateProgressFromMouseY(event) {
   musicStore.setProgress(progress)
 
   notes.value.forEach(note => {
-    note.top = (note.top + delta) % sheetHeight
+    note.move(delta)
+    if (note.top <= 0) {
+      note.move(sheetHeight)
+      note.resetColor()
+    } else if (note.top >= sheetHeight) {
+      note.move(-sheetHeight)
+    }
   })
   barLines.value.forEach(bar => {
     bar.y = (bar.y + delta) % sheetHeight
@@ -175,7 +181,7 @@ function updateNotes() {
 
   notes.value.forEach(note => {
     const old_b = note.top
-    note.top = note.top - dy
+    note.move(-dy)
     const new_b = note.top
 
     // Check if note enters hit band
@@ -193,7 +199,7 @@ function updateNotes() {
       activeHitNotes.delete(note.id)
     }
     if (note.top <= 0) {
-      note.top += sheetHeight
+      note.move(sheetHeight)
       note.resetColor()
     }
   })
