@@ -6,13 +6,13 @@
         <!-- Track Columns -->
         <div class="track-columns">
           <div class="hit-band"></div>
+          <div class="hit-line" :style="{ top: (hitZoneTop+hitZoneBottom)/2 + 'px' }"></div>
           <div v-for="bar in barLines" :key="'bar-' + bar.id" class="bar-line" :style="{ top: bar.y + 'px' }">
           </div>
           <div v-for="col in cols" :key="col" class="track-column" @click="addNote($event, col)"
             @mousemove="handleDrag($event)" @mouseup="stopDragging($event)">
             <div v-for="note in getNotesInColumn(col)" :key="note.id" class="note" :style="getNoteStyle(note)"
-              @mousedown="startDragging(note, $event)"
-              @dblclick="editNoteLyric(note)" :data-note-id="note.id">
+              @mousedown="startDragging(note, $event)" @dblclick="editNoteLyric(note)" :data-note-id="note.id">
               {{ note.lyric || note.noteName }}
             </div>
           </div>
@@ -27,9 +27,7 @@
       </div>
 
       <!-- Progress Bar -->
-      <div class="progress-bar-container" 
-        @mousedown="startProgressDrag"
-        @mousemove="handleProgressDrag"
+      <div class="progress-bar-container" @mousedown="startProgressDrag" @mousemove="handleProgressDrag"
         @mouseup="stopProgressDrag">
         <div class="progress-bar" :style="{ height: currentProgress + '%' }"></div>
       </div>
@@ -103,9 +101,9 @@ function getScaleNoteForColumn(col) {
 
 function getNoteStyle(note) {
   return {
-    backgroundColor: note.color,
     top: `${note.top}px`,
-    height: `${note.height}px`
+    height: `${note.height}px`,
+    backgroundColor: note.color
   }
 }
 
@@ -292,15 +290,15 @@ const handleKeyDown = async (event) => {
       // Add hit class to note element and track the pressed key
       const noteEl = document.querySelector(`[data-note-id="${note.id}"]`)
       if (noteEl) {
-        noteEl.style.boxShadow = `0 0 10px ${noteEl.style.backgroundColor}`
-        noteEl.style.backgroundColor = '#fff'
+        noteEl.style.boxShadow = `0 0 20px ${note.color}`
+        note.color = 'white'
         const startAccuracy = Math.abs((hitZoneBottom + hitZoneTop) / 2 - note.top) / hitZoneHeight
         pressedKeys.set(key, { 
           note, 
           noteEl,
           startAccuracy,
           startTime: Date.now(),
-          expectedDuration: note.duration * 1000 // Convert to ms
+          expectedDuration: note.duration / musicStore.bpm * 60000 // Convert to ms
         })
       }
       activeHitNotes.delete(noteId)
@@ -319,28 +317,29 @@ const handleKeyUp = async (event) => {
   // Check duration accuracy if key was being tracked
   const keyInfo = pressedKeys.get(key)
   if (keyInfo) {
-    const { startAccuracy, noteEl, startTime, expectedDuration } = keyInfo
+    const { note, startAccuracy, noteEl, startTime, expectedDuration } = keyInfo
     const actualDuration = Date.now() - startTime
     const durationAccuracy = Math.abs(actualDuration - expectedDuration) / expectedDuration
-    const accuracy = 1 - Math.max(startAccuracy, durationAccuracy)
+    const points = (1 - Math.max(startAccuracy, durationAccuracy / 1.5)) * 10
+    console.log(`Actual duration: ${actualDuration.toFixed(2)}`)
+    console.log(`Expected duration: ${expectedDuration.toFixed(2)}`)
+    console.log(`Start accuracy: ${startAccuracy.toFixed(2)}`)
+    console.log(`Duration accuracy: ${durationAccuracy.toFixed(2)}`)
+    console.log(`Points: ${points.toFixed(2)}`)
 
     // Remove hit class
     if (noteEl) {
       // Add duration feedback class
-      if (accuracy >= 0.9) {
-        score.value += 20
-      } else if (accuracy >= 0.7) {
-        score.value += 10
+      if (points < 3) {
+        note.color = 'rgba(128, 128, 128, 0.5)'
+        combo.value = 0
       } else {
-        noteEl.style.border = '1px solid red'
+        note.resetColor()
+        score.value += Math.round(points)
+        combo.value++
       }
       noteEl.style.boxShadow = ''
       noteEl.style.backgroundColor = ''
-      
-      // // Remove duration feedback class after a short delay
-      // setTimeout(() => {
-      //   noteEl.classList.remove('good-duration', 'bad-duration')
-      // }, 200)
     }
     
     pressedKeys.delete(key)
@@ -426,8 +425,9 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: white;
+  color: rgb(32, 32, 32);
   font-size: 12px;
+  font-weight: bold;
   cursor: move;
   user-select: none;
   /* transition: all 0.2s; */
@@ -467,6 +467,15 @@ onUnmounted(() => {
       rgba(255, 255, 255, 0.1));
   pointer-events: none;
   z-index: 2;
+}
+
+.hit-line {
+  position: absolute;
+  width: 100%;
+  height: 1px;
+  background: rgba(237, 152, 25, 0.79);
+  pointer-events: none;
+  z-index: 3;
 }
 
 .progress-bar-container {
