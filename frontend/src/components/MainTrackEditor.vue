@@ -1,5 +1,5 @@
 <template>
-  <v-card class="main-track-editor">
+  <v-card class="main-track-editor" :style="{ '--num-columns': cols }">
     <div class="controls">
       <button class="mic-button" :class="{ active: isMicActive }" @click="toggleMicrophone">
         {{ isMicActive ? '🎤 Stop' : '🎤 Start' }}
@@ -8,7 +8,7 @@
         {{ currentPitch || 'No pitch detected' }}
       </div>
     </div>
-    <v-container fluid class="track-container">
+    <v-container fluid class="track-container" :style="{ '--num-columns': cols }">
       <!-- Main Track Area -->
       <div class="main-track-area">
         <!-- Track Columns -->
@@ -27,9 +27,12 @@
         </div>
         <!-- Scale Notes at the Bottom -->
         <div class="scale-notes">
-          <v-chip v-for="col in cols" :key="col" :color="noteColors[getScaleNoteForColumn(col)[0]]"
-            class="scale-note-chip" @click="playNote(getScaleNoteForColumn(col))">
-            {{ getScaleNoteForColumn(col) }}
+          <v-chip v-for="note in columnNotes" :key="note" 
+            :color="noteColors[note[0]]"
+            :variant="isNoteInScale(note) ? 'elevated' : 'outlined'"
+            class="scale-note-chip"
+            @click="playNote(note)">
+            {{ note }}
           </v-chip>
         </div>
       </div>
@@ -51,12 +54,12 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
-import { useMusicStore, noteColors } from '@/stores/music'
+import { useMusicStore, noteColors, allNotes } from '@/stores/music'
 import { Piano } from '@/sound/piano'
 import { PitchDetector } from '@/sound/pitch'
 import { reactive } from 'vue'
 
-const cols = ref(12)
+const cols = ref(24)
 const barLines = ref([])
 const score = ref(0)
 const combo = ref(0)
@@ -78,6 +81,14 @@ const hitZoneBottom = hitZoneTop - hitZoneHeight
 const pitchDebounce = 100 // ms between pitch detections
 const silenceThresh = 200 // ms of silence before considering note released
 const minNoteDuration = 50 // ms minimum duration for a note to be considered valid
+
+const columnNotes = computed(() => {
+  const notes = []
+  for (let i = 1; i <= cols.value; i++) {
+    notes.push(getScaleNoteForColumn(i))
+  }
+  return notes
+})
 
 const pitchIndicatorStyle = computed(() => {
   if (!currentPitch.value) return { opacity: 0.5 }
@@ -116,11 +127,10 @@ function getNotesInColumn(col) {
 }
 
 function getScaleNoteForColumn(col) {
-  const scale = scaleNotes.value
-  if (!scale) return ''
-  const note = scale[(col - 1) % scale.length]
-  const index = 'aAbBCdDeEFgG'.indexOf(scale[0].toUpperCase()) + col - 1
-  const octave = musicStore.baseOctave + Math.floor(index / scale.length)
+  const key = musicStore.currentKey[0]
+  const ki = allNotes.indexOf(key)
+  const note = allNotes[(col + ki - 1) % 12]
+  const octave = musicStore.baseOctave + Math.floor((col + ki - 1) / 12)
   return note + octave
 }
 
@@ -403,7 +413,7 @@ function showScorePopup(points, noteEl) {
   })
 }
 
-const keyboardChars = "qwertyuiop[]"
+const keyboardChars = "qwertyuiop[]1234567890-="
 
 function keyboard2piano(key) {
   const i = keyboardChars.indexOf(key.toLowerCase())
@@ -507,6 +517,13 @@ onUnmounted(() => {
   window.removeEventListener('keydown', handleKeyDown)
   window.removeEventListener('keyup', handleKeyUp)
 })
+
+// Check if a note is in the current scale
+function isNoteInScale(note) {
+  const scale = musicStore.currentScale
+  console.log(scale, note)
+  return scale ? scale.includes(note[0]) : false
+}
 </script>
 
 <style scoped>
@@ -516,14 +533,17 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   height: calc(100vh - 140px);
-  width: 100%;
+  --column-width: 45px;
+  width: calc(var(--column-width) * var(--num-columns)); /* Add some padding for progress bar and scrollbar */
+  min-width: min-content;
 }
 
 .track-container {
   display: flex;
   flex: 1;
-  position: relative;
   padding: 0;
+  overflow: hidden;
+  width: 100%;
 }
 
 .main-track-area {
@@ -534,10 +554,10 @@ onUnmounted(() => {
 
 .track-columns {
   display: grid;
-  grid-template-columns: repeat(12, 1fr);
+  grid-template-columns: repeat(var(--num-columns), var(--column-width));
   gap: 1px;
-  background: #2D2D2D;
   flex: 1;
+  background: #2D2D2D;
   position: relative;
   transform: scaleY(-1);
 }
@@ -546,7 +566,7 @@ onUnmounted(() => {
   background: #1E1E1E;
   position: relative;
   min-height: 100%;
-  min-width: 9%;
+  /* width: var(--column-width); */
   cursor: pointer;
 }
 
@@ -572,15 +592,21 @@ onUnmounted(() => {
   z-index: 2;
 }
 
-.note.is-falling {
-  transition: top 0.1s linear;
-}
-
 .scale-notes {
   display: flex;
-  justify-content: space-between;
-  padding: 8px;
-  background: #1E1E1E;
+  justify-content: space-around;
+  grid-template-columns: repeat(var(--num-columns), var(--column-width));
+  padding: 4px 0px;
+}
+
+.scale-note-chip {
+  margin: 0;
+  font-weight: bold;
+  justify-content: center;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  min-height: 24px;
+  padding: 0;
 }
 
 .bar-line {
@@ -618,7 +644,7 @@ onUnmounted(() => {
 .controls {
   position: absolute;
   top: 20px;
-  right: 20px;
+  right: 30px;
   z-index: 10;
   display: flex;
   flex-direction: column;
@@ -675,10 +701,10 @@ onUnmounted(() => {
 }
 
 .score-display {
-  position: fixed;
+  position: absolute;
   top: 20px;
-  right: 20px;
-  background: rgba(0, 0, 0, 0.8);
+  left: 20px;
+  background: rgba(0, 0, 0, 0.5);
   padding: 10px;
   border-radius: 5px;
   color: white;

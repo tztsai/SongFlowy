@@ -13,16 +13,19 @@
             :icon="isPlaying ? 'mdi-pause' : 'mdi-play'" size="small" />
         </v-col>
         <v-col cols="3">
-          <v-slider v-model="bpm" :min="30" :max="180" class="align-center" density="compact" hide-details>
+          <v-slider v-model="bpm" :min="30" :max="180" 
+          style="max-width: 200px;"
+          class="align-center" density="compact" hide-details>
             <template v-slot:append>
               <div class="text-medium-emphasis">{{ Math.round(bpm) }} BPM</div>
             </template>
           </v-slider>
         </v-col>
-        <!-- <v-col cols="2">
+        <v-col cols="2">
           <v-select v-model="currentKey" :items="keySignatures" label="Key" density="compact" hide-details
+            style="max-width: 80px;"
             @update:modelValue="updateKey" />
-        </v-col> -->
+        </v-col>
         <v-col cols="3">
           <v-btn color="primary" prepend-icon="mdi-upload" size="large" @click="triggerFileUpload"
             :loading="isUploading" :disabled="isUploading">
@@ -46,19 +49,19 @@ const fileInput = ref(null)
 const isUploading = ref(false)
 const uploadError = ref(null)
 
-// const keySignatures = [
-//   'C', 'd', 'D', 'e', 'E', 'F', 'g', 'G', 'a', 'A', 'b', 'B',
-//   'Cm', 'dm', 'Dm', 'em', 'Em', 'fm', 'gm', 'Gm', 'am', 'Am', 'bm', 'Bm'
-// ]
+const keySignatures = [
+  'C', 'd', 'D', 'e', 'E', 'F', 'g', 'G', 'a', 'A', 'b', 'B',
+  'Cm', 'dm', 'Dm', 'em', 'Em', 'fm', 'gm', 'Gm', 'am', 'Am', 'bm', 'Bm'
+]
 
-// const currentKey = computed({
-//   get: () => musicStore.currentKey,
-//   set: (value) => musicStore.setKey(value)
-// })
+const currentKey = computed({
+  get: () => musicStore.currentKey,
+  set: (value) => musicStore.setKey(value)
+})
 
-// function updateKey(value) {
-//   musicStore.setKey(value)
-// }
+function updateKey(value) {
+  musicStore.setKey(value)
+}
 
 const bpm = computed({
   get: () => musicStore.bpm,
