@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 
 const beatPixels = 30
 
-export const allNotes = ['a', 'A', 'b', 'B', 'C', 'd', 'D', 'e', 'E', 'F', 'g', 'G']
+export const allNotes = ['C', 'd', 'D', 'e', 'E', 'F', 'g', 'G', 'a', 'A', 'b', 'B']
 
 const scaleMap = {
   'C': ['C', 'D', 'E', 'F', 'G', 'A', 'B'],
@@ -101,7 +101,7 @@ export const useMusicStore = defineStore('music', {
     isPlaying: false,
     isLooping: false,
     currentKey: 'C',
-    baseOctave: 3,
+    baseOctave: 4,
     notes: [],
     lyrics: '',  // Add lyrics property
   }),

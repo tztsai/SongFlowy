@@ -1,5 +1,5 @@
 <template>
-  <v-card class="main-track-editor" :style="{ '--num-columns': cols }">
+  <v-card class="main-track-editor" :style="{ '--num-columns': cols, '--column-width': columnWidth + 'vw' }">
     <div class="controls">
       <button class="mic-button" :class="{ active: isMicActive }" @click="toggleMicrophone">
         {{ isMicActive ? '🎤 Stop' : '🎤 Start' }}
@@ -8,13 +8,16 @@
         {{ currentPitch || 'No pitch detected' }}
       </div>
     </div>
-    <v-container fluid class="track-container" :style="{ '--num-columns': cols }">
+    <v-container fluid class="track-container">
       <!-- Main Track Area -->
       <div class="main-track-area">
         <!-- Track Columns -->
         <div class="track-columns">
           <div class="hit-band"></div>
-          <div class="hit-line" :style="{ top: hitLineY + 'px' }"></div>
+          <div class="hit-line" :style="{ top: hitLineY + 'px' }">
+            <div v-if="isMicActive && currentPitch" class="pitch-dot" :style="pitchDotStyle"></div>
+            <canvas ref="pitchTrailCanvas" class="pitch-trail" v-if="isMicActive"></canvas>
+          </div>
           <div v-for="bar in barLines" :key="'bar-' + bar.id" class="bar-line" :style="{ top: bar.y + 'px' }">
           </div>
           <div v-for="col in cols" :key="col" class="track-column" @click="addNote($event, col)"
@@ -56,10 +59,10 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useMusicStore, noteColors, allNotes } from '@/stores/music'
 import { Piano } from '@/sound/piano'
-import { PitchDetector } from '@/sound/pitch'
+import { PitchDetector, NOTE_FREQUENCIES } from '@/sound/pitch'
 import { reactive } from 'vue'
 
-const cols = ref(24)
+const cols = ref(18)
 const barLines = ref([])
 const score = ref(0)
 const combo = ref(0)
@@ -74,13 +77,17 @@ const currentPitch = ref(null)
 const pitchTimeout = ref(null)
 const barHeight = musicStore.barPixels
 const sheetHeight = musicStore.sheetPixels
+const columnWidth = computed(() => 75 / cols.value)
 const hitZoneHeight = 30
 const hitZoneTop = 100
 const hitZoneBottom = hitZoneTop - hitZoneHeight
 const hitLineY = (hitZoneTop + hitZoneBottom) / 2
-const pitchDebounce = 100 // ms between pitch detections
+const pitchDebounce = 10 // ms between pitch detections
 const silenceThresh = 200 // ms of silence before considering note released
 const minNoteDuration = 50 // ms minimum duration for a note to be considered valid
+const pitchTrailCanvas = ref(null)
+const pitchHistory = ref([])
+const pitchLifeSpan = 3000  // ms
 
 const columnNotes = computed(() => {
   const notes = []
@@ -95,6 +102,46 @@ const pitchIndicatorStyle = computed(() => {
   return {
     opacity: 1,
     color: 'white'
+  }
+})
+
+// Calculate x position based on frequency
+function freqToX(freq) {
+  if (!freq) return 0
+  if (typeof freq === 'string') {
+    freq = NOTE_FREQUENCIES[freq]
+  }
+  const baseKey = musicStore.currentKey[0] + musicStore.baseOctave
+  const baseFreq = NOTE_FREQUENCIES[baseKey]
+  const colWidth = document.querySelector('.main-track-area').offsetWidth / cols.value
+  const relativePos = Math.log2(freq / baseFreq) * 12 + 0.5
+  return Math.max(0, Math.min(cols.value, relativePos)) * colWidth
+}
+
+// Update pitch history and draw trail
+function updatePitchTrail(freq) {
+  if (!pitchTrailCanvas.value || !freq) return
+
+  // Add new pitch to history
+  pitchHistory.value.push({ 
+    freq,
+    x: freqToX(freq),
+    time: Date.now(),
+    drift: 0
+  })
+
+  // Remove old pitches
+  pitchHistory.value = pitchHistory.value.filter(p => Date.now() - p.time < pitchLifeSpan)
+}
+
+// Compute pitch dot position and style
+const pitchDotStyle = computed(() => {
+  if (!currentPitch.value) return {}
+  const x = freqToX(currentPitch.value)
+  return {
+    left: `${x}px`,
+    transform: 'translate(-50%, -50%)',
+    boxShadow: `0 0 10px 5px ${noteColors[currentPitch.value[0]] || '#fff'}`
   }
 })
 
@@ -140,6 +187,11 @@ function getNoteStyle(note) {
     height: `${note.height}px`,
     backgroundColor: note.color
   }
+}
+
+function isNoteInScale(note) {
+  const scale = musicStore.currentScale
+  return scale ? scale.includes(note[0]) : false
 }
 
 function startDragging(note, event) {
@@ -242,6 +294,67 @@ function updateNotes() {
     }
   })
 
+  pitchHistory.value.forEach(p => {
+    p.drift += dy
+  })
+
+  const ctx = pitchTrailCanvas.value.getContext('2d')
+  const canvas = pitchTrailCanvas.value
+  const now = Date.now()
+
+  // Update canvas size if needed
+  const parentWidth = canvas.parentElement.offsetWidth
+  const trackColumns = document.querySelector('.track-columns')
+  if (canvas.width !== parentWidth || canvas.height !== trackColumns.offsetHeight) {
+    canvas.width = parentWidth
+    canvas.height = trackColumns.offsetHeight
+    canvas.style.top = `-${hitZoneTop}px`  // Align with hit zone top
+  }
+
+  // Clear canvas
+  ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+  // Sort pitches by age so newer ones are drawn on top
+  const sortedPitches = [...pitchHistory.value].sort((a, b) => a.time - b.time)
+
+  // Draw trail with gradient
+  sortedPitches.forEach(pitch => {
+    const age = now - pitch.time
+    const normalizedDrift = pitch.drift / canvas.height
+    
+    // Calculate alpha based on both age and position
+    const ageAlpha = 1 - age / pitchLifeSpan
+    const driftAlpha = Math.max(0, 1 - normalizedDrift * 1.5) // Fade out as it falls
+    const alpha = Math.min(ageAlpha, driftAlpha) * 0.6
+
+    // Skip if fully transparent
+    if (alpha <= 0) return
+
+    const closestNote = pitchDetector.getClosestNote(pitch.freq)
+    const color = closestNote ? noteColors[closestNote[0]] : '#fff'
+    
+    // Calculate y position relative to hit zone top
+    const y = hitZoneTop - pitch.drift
+    
+    // Skip if outside visible area (with some padding)
+    if (y < -20 || y > canvas.height + 20) return
+    
+    // Create gradient for each point
+    const gradient = ctx.createRadialGradient(
+      pitch.x, y, 0,
+      pitch.x, y, 10
+    )
+    gradient.addColorStop(0, `${color}`)
+    gradient.addColorStop(1, `${color}00`)
+    
+    ctx.fillStyle = gradient
+    ctx.globalAlpha = alpha
+    ctx.beginPath()
+    ctx.arc(pitch.x, y, 10, 0, Math.PI * 2)
+    ctx.fill()
+  })
+  ctx.globalAlpha = 1
+
   animationFrame = requestAnimationFrame(updateNotes)
 }
 
@@ -281,7 +394,7 @@ function playNote(note) {
 }
 
 function note2piano(note) {
-  const notes = 'aAbBCdDeEFgG'
+  const notes = 'CdDeEFgGaAbB'
   const m = note.match(/\d+$/);
   const octave = m ? parseInt(m[0]) : musicStore.baseOctave;
   note = note.replace(/\d+$/, '');
@@ -291,9 +404,7 @@ function note2piano(note) {
 async function toggleMicrophone() {
   try {
     if (!isMicActive.value) {
-      await pitchDetector.start((detectedNote) => {
-        handlePitchDetection(detectedNote)
-      })
+      await pitchDetector.start(handlePitchDetection)
       isMicActive.value = true
     } else {
       pitchDetector.stop()
@@ -307,32 +418,31 @@ async function toggleMicrophone() {
   }
 }
 
-function handlePitchDetection(detectedNote) {
-  const now = Date.now()
-  
-  // Debounce pitch detection
-  if (now - lastPitchTime.value < pitchDebounce) return
-  lastPitchTime.value = now
+function handlePitchDetection({ note, freq }) {
+  // Clear any existing silence timeout
+  if (pitchTimeout.value) {
+    clearTimeout(pitchTimeout.value)
+    pitchTimeout.value = null
+  }
 
-  // Update current pitch display
-  currentPitch.value = detectedNote
-  
-  // Clear silence timeout if we have a new pitch
-  if (detectedNote) {
-    clearTimeout(silenceTimeout.value)
-  } else {
-    // Start silence timeout to handle note release
-    silenceTimeout.value = setTimeout(() => {
-      handleSilence()
-    }, silenceThresh)
+  if (!freq) {
+    // Start silence timeout
+    pitchTimeout.value = setTimeout(handleSilence, silenceThresh)
     return
   }
 
-  // Find matching notes in the hit zone
-  for (const [noteId, note] of activeHitNotes) {
-    if (note.noteName === detectedNote && !pressedKeys.has(detectedNote)) {
-      const noteEl = document.querySelector(`[data-note-id="${note.id}"]`)
-      if (noteEl) handleNoteHit(note, noteEl, detectedNote)
+  // Debounce the pitch updates
+  if (Date.now() - lastPitchTime.value < pitchDebounce) return
+  lastPitchTime.value = Date.now()
+
+  currentPitch.value = note
+  updatePitchTrail(freq)
+
+  // Check for note hits
+  for (const [noteId, noteObj] of activeHitNotes) {
+    if (noteObj.noteName === note && !pressedKeys.has(note)) {
+      const noteEl = document.querySelector(`[data-note-id="${noteObj.id}"]`)
+      if (noteEl) handleNoteHit(noteObj, noteEl, note)
     }
   }
 }
@@ -483,8 +593,8 @@ const handleKeyUp = async (event) => {
 }
 
 // Watch for play state changes
-watch(isPlaying, (newValue) => {
-  if (newValue) {
+watch(isPlaying, (playing) => {
+  if (playing) {
     updateNotes()
   } else if (animationFrame) {
     cancelAnimationFrame(animationFrame)
@@ -506,13 +616,8 @@ onUnmounted(() => {
   }
   window.removeEventListener('keydown', handleKeyDown)
   window.removeEventListener('keyup', handleKeyUp)
+  pitchHistory.value = []
 })
-
-// Check if a note is in the current scale
-function isNoteInScale(note) {
-  const scale = musicStore.currentScale
-  return scale ? scale.includes(note[0]) : false
-}
 </script>
 
 <style scoped>
@@ -522,8 +627,7 @@ function isNoteInScale(note) {
   display: flex;
   flex-direction: column;
   height: calc(100vh - 120px);
-  --column-width: 45px;
-  width: calc(var(--column-width) * var(--num-columns)); /* Add some padding for progress bar and scrollbar */
+  width: calc(var(--column-width) * var(--num-columns));
   min-width: min-content;
 }
 
@@ -555,7 +659,6 @@ function isNoteInScale(note) {
   background: #1E1E1E;
   position: relative;
   min-height: 100%;
-  /* width: var(--column-width); */
   cursor: pointer;
 }
 
@@ -624,8 +727,25 @@ function isNoteInScale(note) {
 .hit-line {
   position: absolute;
   width: 100%;
-  height: 1px;
-  background: rgba(237, 152, 25, 0.79);
+  height: 2px;
+  background: rgba(255, 255, 255, 0.2);
+  z-index: 3;
+}
+
+.pitch-dot {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  background: radial-gradient(circle, #fff 0%, rgba(255,255,255,0.3) 70%, transparent 100%);
+  border-radius: 50%;
+  z-index: 4;
+  transition: all 0.3s ease-out;
+}
+
+.pitch-trail {
+  position: absolute;
+  left: 0;
+  width: 100%;
   pointer-events: none;
   z-index: 3;
 }

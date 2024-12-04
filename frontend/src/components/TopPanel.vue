@@ -2,31 +2,31 @@
   <v-card class="top-panel">
     <v-container>
       <v-row>
-        <v-col cols="auto">
+        <v-col cols="1">
           <div class="time-display">
             <div class="time-value">{{ currentTime }}</div>
             <div class="time-label">Time</div>
           </div>
         </v-col>
-        <v-col cols="2">
+        <v-col cols="1">
           <v-btn :color="isPlaying ? 'error' : 'success'" @click="togglePlay"
             :icon="isPlaying ? 'mdi-pause' : 'mdi-play'" size="small" />
+        </v-col>
+        <v-col cols="2">
+          <v-select v-model="currentKey" :items="keySignatures" label="Key" density="compact" hide-details
+          style="max-width: 80px;"
+          @update:modelValue="updateKey" />
         </v-col>
         <v-col cols="3">
           <v-slider v-model="bpm" :min="30" :max="180" 
           style="max-width: 200px;"
-          class="align-center" density="compact" hide-details>
+          density="compact" hide-details>
             <template v-slot:append>
               <div class="text-medium-emphasis">{{ Math.round(bpm) }} BPM</div>
             </template>
           </v-slider>
         </v-col>
-        <v-col cols="2">
-          <v-select v-model="currentKey" :items="keySignatures" label="Key" density="compact" hide-details
-            style="max-width: 80px;"
-            @update:modelValue="updateKey" />
-        </v-col>
-        <v-col cols="3">
+        <v-col cols="auto">
           <v-btn color="primary" prepend-icon="mdi-upload" size="large" @click="triggerFileUpload"
             :loading="isUploading" :disabled="isUploading">
             Upload MIDI
@@ -144,10 +144,7 @@ onUnmounted(() => {
 .v-col {
   display: flex;
   align-items: center;
-}
-
-.top-panel {
-  background: #1E1E1E;
+  justify-content: space-around;
 }
 
 .time-display {

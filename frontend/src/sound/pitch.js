@@ -6,21 +6,28 @@ const MIN_LEVEL = -60 // dB
 const TONE_STABILITY_COUNT = 3
 
 // Note frequencies for pitch detection (A4 = 440Hz)
-const NOTE_FREQUENCIES = {
-  'C4': 261.63,
-  'd4': 277.18,
-  'D4': 293.66,
-  'e4': 311.13,
-  'E4': 329.63,
-  'F4': 349.23,
-  'g4': 369.99,
-  'G4': 392.00,
-  'a4': 415.30,
-  'A4': 440.00,
-  'b4': 466.16,
-  'B4': 493.88,
-  'C5': 523.25
+export const NOTE_FREQUENCIES = {
+  C4: 261.63,
+  d4: 277.18,
+  D4: 293.66,
+  e4: 311.13,
+  E4: 329.63,
+  F4: 349.23,
+  g4: 369.99,
+  G4: 392.00,
+  a4: 415.30,
+  A4: 440.00,
+  b4: 466.16,
+  B4: 493.88
 }
+
+Object.entries(NOTE_FREQUENCIES).forEach(([note, freq]) => {
+  const [k, o] = note.split('')
+  for (let i = -2; i <= 2; i++) {
+    const octave = parseInt(o) + i
+    NOTE_FREQUENCIES[k + octave] = freq * Math.pow(2, i)
+  }
+})
 
 class Tone {
   constructor(freq = 0, db = -Infinity) {
@@ -143,14 +150,12 @@ export class PitchDetector {
     
     // Find most prominent tone
     const tone = this.findBestTone()
+    const freq = tone?.freq
     
-    if (tone && tone.isStable() && tone.db > MIN_LEVEL) {
-      const note = this.getClosestNote(tone.freq)
-      if (note && this.onPitch) {
-        this.onPitch(note)
-      }
-      this.lastPitch = tone.freq
-    }
+    if (tone && tone.isStable() && tone.db > MIN_LEVEL)
+      this.lastPitch = freq
+
+    this.onPitch({ note: this.getClosestNote(freq), freq })
     
     requestAnimationFrame(() => this.detectPitch())
   }
@@ -262,6 +267,8 @@ export class PitchDetector {
   }
 
   getClosestNote(freq) {
+    if (!freq) return null
+    
     let minDiff = Infinity
     let closestNote = null
     
