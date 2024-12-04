@@ -104,6 +104,7 @@ export const useMusicStore = defineStore('music', {
     baseOctave: 3,
     notes: [],
     lyrics: '',  // Add lyrics property
+    bgm: null,
   }),
 
   actions: {

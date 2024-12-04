@@ -27,12 +27,32 @@
           </v-slider>
         </v-col>
         <v-col cols="auto">
-          <v-btn color="primary" prepend-icon="mdi-upload" size="large" @click="triggerFileUpload"
-            :loading="isUploading" :disabled="isUploading">
-            Upload MIDI
-          </v-btn>
-          <input type="file" ref="fileInput" accept=".mid,.midi,.wav,.mp3" style="display: none"
-            @change="handleFileUpload">
+          <v-menu>
+            <template v-slot:activator="{ props }">
+              <v-btn color="primary" prepend-icon="mdi-upload" size="large" v-bind="props"
+                :loading="isUploading" :disabled="isUploading">
+                Upload
+              </v-btn>
+            </template>
+            <v-list>
+              <v-list-item @click="uploadType = 'separate'; triggerFileUpload('vocal')">
+                <v-list-item-title>Upload Vocal Track</v-list-item-title>
+              </v-list-item>
+              <v-list-item @click="uploadType = 'separate'; triggerFileUpload('bgm')">
+                <v-list-item-title>Upload Background Music</v-list-item-title>
+              </v-list-item>
+              <v-divider></v-divider>
+              <v-list-item @click="uploadType = 'combined'; triggerFileUpload('combined')">
+                <v-list-item-title>Upload Whole Track</v-list-item-title>
+              </v-list-item>
+            </v-list>
+          </v-menu>
+          <input type="file" ref="vocalInput" accept=".mid,.midi,.wav,.mp3" style="display: none"
+            @change="handleFileUpload('vocal')">
+          <input type="file" ref="bgmInput" accept=".mid,.midi,.wav,.mp3" style="display: none"
+            @change="handleFileUpload('bgm')">
+          <input type="file" ref="combinedInput" accept=".mid,.midi,.wav,.mp3" style="display: none"
+            @change="handleFileUpload('combined')">
           <div v-if="uploadError" class="text-red">{{ uploadError }}</div>
         </v-col>
       </v-row>
@@ -41,12 +61,17 @@
 </template>
 
 <script setup>
-import { ref, computed, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useMusicStore } from '@/stores/music'
+import { apiClient } from '@/api/client'
 
 const musicStore = useMusicStore()
-const fileInput = ref(null)
+const vocalInput = ref(null)
+const bgmInput = ref(null)
+const combinedInput = ref(null)
+const uploadType = ref('separate') // 'separate' or 'combined'
 const isUploading = ref(false)
+const isSeparating = ref(false)
 const uploadError = ref(null)
 
 const keySignatures = [
@@ -81,48 +106,65 @@ const currentTime = computed(() => {
   return `${mins}:${secs.toString().padStart(2, '0')}`
 })
 
-function triggerFileUpload() {
-  fileInput.value.click()
+function triggerFileUpload(type) {
+  switch(type) {
+    case 'vocal':
+      vocalInput.value.click()
+      break
+    case 'bgm':
+      bgmInput.value.click()
+      break
+    case 'combined':
+      combinedInput.value.click()
+      break
+  }
 }
 
-async function handleFileUpload(event) {
-  const file = event.target.files[0]
+async function handleFileUpload(type) {
+  const input = type === 'vocal' ? vocalInput.value :
+                type === 'bgm' ? bgmInput.value :
+                combinedInput.value
+                
+  const file = input.files[0]
   if (!file) return
 
   isUploading.value = true
   uploadError.value = null
+  const formData = new FormData()
+  formData.append('file', file)
+  formData.append('type', type)
 
   try {
-    const formData = new FormData()
-    formData.append('file', file)
-
-    const response = await fetch('http://localhost:5000/api/upload', {
-      method: 'POST',
-      body: formData
-    })
-
-    if (!response.ok) {
-      throw new Error('Upload failed')
-    }
-
-    const data = await response.json()
-
-    // Update store with the received data
-    if (data.tempo) {
-      musicStore.setBpm(data.tempo)
-    }
-    if (data.key) {
-      musicStore.setKey(data.key)
-    }
-    if (data.notes) {
-      musicStore.setNotes(data.notes)
+    if (type === 'combined') {
+      isSeparating.value = true
+      // First separate the tracks
+      const { vocalPath, bgmPath } = await apiClient.post('/api/separate', formData)
+      
+      // Now process the vocal track for notes
+      const noteData = await apiClient.post('/api/sheet', {
+        path: vocalPath
+      }, {
+        headers: { 'Content-Type': 'application/json' }
+      })
+      
+      musicStore.loadNotes(noteData.notes)
+      musicStore.setBGMPath(bgmPath)
+    } else {
+      const data = await apiClient.post('/api/upload', formData)
+      
+      if (type === 'vocal') {
+        musicStore.loadNotes([]) // Clear notes when uploading new vocal
+      } else if (type === 'bgm') {
+        musicStore.setBGMPath(data.path)
+      }
     }
   } catch (error) {
     console.error('Upload error:', error)
-    uploadError.value = 'Failed to upload file'
+    uploadError.value = error.message
   } finally {
     isUploading.value = false
-    event.target.value = '' // Reset file input
+    isSeparating.value = false
+    input.value = null
   }
 }
 

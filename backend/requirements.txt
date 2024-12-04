@@ -10,3 +10,4 @@ tensorflow==2.13.0
 git+https://git.aubio.org/aubio/aubio/
 pytest==7.4.3
 pytest-cov==4.1.0
+audio-separator==0.24.1
