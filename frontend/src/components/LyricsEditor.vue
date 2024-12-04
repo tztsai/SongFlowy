@@ -54,12 +54,10 @@ async function focusNextBar(barIndex) {
 }
 
 function splitLyrics(value) {
-  // If string contains any CJK characters, split by character
-  if (/[\u4e00-\u9fff\u3400-\u4dbf\u20000-\u2a6df]/.test(value)) {
-    return value.split('')
+  if (/[ -~]+/.test(value)) {  // ascii characters
+    return value.split(/\s+/).filter(w => w.length > 0)
   }
-  // For ASCII text, split by word
-  return value.split(/\s+/).filter(word => word.length > 0)
+  return value.trim().split('')
 }
 
 function updateBarLyrics(barIndex, value) {
@@ -108,7 +106,7 @@ function updateBarLyrics(barIndex, value) {
     }
     
     // Trim the value to max length for current bar
-    return chars.slice(0, maxChars).join('')
+    return chars.slice(0, maxChars).join(' ')
   } else {
     // Normal update for current bar
     currentBar.forEach((note, index) => {

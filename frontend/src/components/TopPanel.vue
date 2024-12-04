@@ -127,6 +127,7 @@ async function handleFileUpload(event) {
 }
 
 const handleSpacePress = (e) => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return
   if (e.code === 'Space') {
     e.preventDefault()
     togglePlay()
