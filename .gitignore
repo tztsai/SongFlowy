@@ -165,3 +165,4 @@ uploads/
 package-lock.json
 node_modules/
 *.tmp
+.DS_Store
