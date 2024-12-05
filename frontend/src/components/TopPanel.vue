@@ -143,6 +143,7 @@ async function handleFileUpload(type) {
     }
 
     if (vocalPath) {
+      console.log('Vocal path:', vocalPath)
       const form2 = new FormData()
       form2.append('path', vocalPath)
       const vocalData = await apiClient.post('/api/sheet', form2)
@@ -154,6 +155,7 @@ async function handleFileUpload(type) {
       musicStore.setNotes(vocalData.notes)
     }
     if (bgmPath) {
+      console.log('BGM path:', bgmPath)
       const { url } = await apiClient.get(`/${bgmPath}`)
       musicStore.setBGMPath(url)
     }

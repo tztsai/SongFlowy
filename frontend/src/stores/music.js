@@ -158,7 +158,9 @@ export const useMusicStore = defineStore('music', {
     },
     setNotes(notes) {
       this.notes = []
-      notes.slice(0, 100).forEach(note => this.addNote(note))
+      console.log('Adding', notes.length, 'notes')
+      notes.forEach(note => this.addNote(note))
+      console.log('Added', this.notes.length, 'notes')
       this.totalBeats = Math.ceil(Math.max(...this.notes.map(note => note.end)))
     },
     addNote(note) {
@@ -171,9 +173,12 @@ export const useMusicStore = defineStore('music', {
       })
       // Find any overlapping notes with the same name
       for (const exNote of this.notes) {
-        if (exNote.noteName === note.noteName && 
-            exNote.top > note.top && exNote.top <= note.bottom) {
-          return exNote.update({ top: note.top })
+        if (exNote.noteName === note.noteName) {
+          if (exNote.top >= note.top - 1 && exNote.top <= note.bottom + 1) {
+            return exNote.update({ top: note.top })
+          } else if (exNote.bottom <= note.bottom + 1 && exNote.bottom >= note.top - 1) {
+            return exNote.update({ bottom: note.bottom })
+          }
         }
       }
       // Insert note at the correct position to keep this.notes sorted by start
@@ -185,8 +190,7 @@ export const useMusicStore = defineStore('music', {
           break
         }
       }
-      if (!inserted) 
-        this.notes.push(note)
+      if (!inserted) this.notes.push(note)
     },
     updateNote(id, note) {
       const index = this.notes.findIndex(note => note.id === id)
