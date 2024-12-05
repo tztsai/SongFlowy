@@ -26,6 +26,9 @@ UPLOAD_FOLDER = Path('uploads')
 UPLOAD_FOLDER.mkdir(exist_ok=True)
 app.config['UPLOAD_FOLDER'] = str(UPLOAD_FOLDER)
 
+ONSET_THRESHOLD = 0.7
+FRAME_THRESHOLD = 0.2
+
 # @app.after_request
 # def after_request(response):
 #     response.headers.add('Access-Control-Allow-Origin', '*')
@@ -285,7 +288,8 @@ def audio_to_sheet_music(audio_path):
         logging.info(f"Detected tempo: {tempo} bpm")
         model_output, midi_data, note_events = predict(
             audio_path, midi_tempo=tempo,
-            onset_threshold=0.6, frame_threshold=0.2,
+            onset_threshold=ONSET_THRESHOLD, 
+            frame_threshold=FRAME_THRESHOLD,
         )
 
         with open(midi_path, 'wb') as f:

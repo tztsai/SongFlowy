@@ -90,14 +90,6 @@ const pitchTrailCanvas = ref(null)
 const pitchHistory = ref([])
 const pitchLifeSpan = 3000  // ms
 
-Object.entries(NoteFrequencies).forEach(([note, freq]) => {
-  console.log(note, freq, pitchDetector.getClosestNote(freq))
-  freq -= 10
-  console.log(freq, pitchDetector.getClosestNote(freq))
-  freq += 20
-  console.log(freq, pitchDetector.getClosestNote(freq))
-})
-
 const columnNotes = computed(() => {
   const notes = []
   for (let i = 1; i <= cols.value; i++) {
@@ -176,7 +168,7 @@ function initBarLines() {
   for (let i = 0; i < musicStore.numBars; i++) {
     barLines.value.push({
       id: i,
-      y: i * barHeight + hitLineY
+      y: i * barHeight.value + hitLineY
     })
   }
 }
@@ -259,20 +251,21 @@ function updateProgressFromMouseY(event) {
   const container = event.currentTarget
   const rect = container.getBoundingClientRect()
   const progress = Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height))
-  const delta = (currentProgress.value / 100 - progress) * sheetHeight
+  const H = sheetHeight.value
+  const delta = (currentProgress.value / 100 - progress) * H
   musicStore.setProgress(progress)
 
   notes.value.forEach(note => {
     note.move(delta)
     if (note.bottom <= -hitZoneHeight) {
-      note.move(sheetHeight)
+      note.move(H)
       note.resetColor()
-    } else if (note.top >= sheetHeight) {
-      note.move(-sheetHeight)
+    } else if (note.top >= H) {
+      note.move(-H)
     }
   })
   barLines.value.forEach(bar => {
-    bar.y = (bar.y + delta) % sheetHeight
+    bar.y = (bar.y + delta) % H
   })
 }
 
@@ -319,15 +312,15 @@ function updateNotes() {
     }
     
     else if (note.bottom <= -hitZoneHeight) {
-      note.move(sheetHeight)
+      note.move(sheetHeight.value)
       note.resetColor()
     }
   })
 
   barLines.value.forEach(bar => {
     bar.y -= dy
-    if (bar.y / barHeight <= -1) {
-      bar.y += sheetHeight
+    if (bar.y / barHeight.value <= -1) {
+      bar.y += sheetHeight.value
     }
   })
 

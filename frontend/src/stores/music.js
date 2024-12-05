@@ -158,7 +158,7 @@ export const useMusicStore = defineStore('music', {
     },
     setNotes(notes) {
       this.notes = []
-      notes.slice(0, 90).forEach(note => this.addNote(note))
+      notes.slice(0, 100).forEach(note => this.addNote(note))
       this.totalBeats = Math.ceil(Math.max(...this.notes.map(note => note.end)))
     },
     addNote(note) {
