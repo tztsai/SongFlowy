@@ -123,37 +123,39 @@ async function handleFileUpload(type) {
 
   isUploading.value = true
   uploadError.value = null
-  const formData = new FormData()
-  formData.append('file', file)
-  formData.append('type', type)
+  const form = new FormData()
+  form.append('file', file)
+  form.append('type', type)
 
-  var vocalData, bgmData
+  var vocalPath, bgmPath
 
   try {
     if (type === 'combined') {
-      // First separate the stems
-      const { full_file, vocal_file, bgm_file } = await apiClient.post('/api/separate', formData)
-
-      const formData2 = new FormData()
-      formData2.append('file', vocal_file)
-
-      vocalData = await apiClient.post('/api/sheet', formData2)
-      bgmData = await apiClient.get(`/uploads/${full_file}`)
-      
+      const { song, vocal, instrumental } = await apiClient.post('/api/separate', form)
+      vocalPath = vocal
+      bgmPath = song
     } else if (type === 'vocal') {
-      vocalData = await apiClient.post('/api/upload', formData)
+      const { path } = await apiClient.post('/api/upload', form)
+      vocalPath = path
     } else if (type === 'bgm') {
-      bgmData = await apiClient.post('/api/upload', formData)
+      const { path } = await apiClient.post('/api/upload', form)
+      bgmPath = path
     }
 
-    if (vocalData) {
+    if (vocalPath) {
+      const form2 = new FormData()
+      form2.append('path', vocalPath)
+      const vocalData = await apiClient.post('/api/sheet', form2)
+
+      // TODO: transcribe the vocal track and set lyrics
       musicStore.setBpm(vocalData.tempo)
       musicStore.setKey(vocalData.key)
       musicStore.setTimeSignature(...vocalData.time_signature)
       musicStore.setNotes(vocalData.notes)
     }
-    if (bgmData) {
-      musicStore.setBGMPath(bgmData.url)
+    if (bgmPath) {
+      const { url } = await apiClient.get(`/${bgmPath}`)
+      musicStore.setBGMPath(url)
     }
   } catch (error) {
     console.error('Upload error:', error)

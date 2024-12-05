@@ -76,8 +76,8 @@ const pitchDetector = new PitchDetector()
 const currentPitch = ref(null)
 const lastPitchTime = ref(0)
 const pitchTimeout = ref(null)
-const barHeight = musicStore.barPixels
-const sheetHeight = musicStore.sheetPixels
+const barHeight = computed(() => musicStore.barPixels)
+const sheetHeight = computed(() => musicStore.sheetPixels)
 const columnWidth = computed(() => 75 / cols.value)
 const autoPlayHitNotes = ref(true)
 const hitZoneHeight = 30
@@ -165,7 +165,6 @@ function initBarLines() {
   if (!container) return
   barLines.value = []
 
-  // Create bar lines every 4 beats
   for (let i = 0; i < musicStore.numBars; i++) {
     barLines.value.push({
       id: i,

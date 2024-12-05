@@ -231,6 +231,7 @@ export const useMusicStore = defineStore('music', {
       // Set up event listeners
       audio.addEventListener('loadedmetadata', () => {
         console.log('BGM loaded, duration:', audio.duration)
+        this.setDuration(audio.duration)
       })
 
       audio.addEventListener('error', (e) => {

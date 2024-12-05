@@ -13,34 +13,49 @@ import traceback
 import plotly
 import json
 import re
+from functools import wraps
+from music21.meter import TimeSignature
 
 logging.basicConfig(level=logging.INFO)
 
 app = Flask(__name__)
 
-# Enable CORS for all routes
 CORS(app, resources={r"/*": {"origins": "*"}})
-
-@app.after_request
-def after_request(response):
-    response.headers.add('Access-Control-Allow-Origin', '*')
-    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
-    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
-    return response
 
 UPLOAD_FOLDER = Path('uploads')
 UPLOAD_FOLDER.mkdir(exist_ok=True)
 app.config['UPLOAD_FOLDER'] = str(UPLOAD_FOLDER)
 
-@app.route('/')
-def serve_vue_app():
-    return app.send_static_file('index.html')
+# @app.after_request
+# def after_request(response):
+#     response.headers.add('Access-Control-Allow-Origin', '*')
+#     return response
 
-@app.errorhandler(404)
-def not_found(e):
-    if request.path.startswith('/api/'):
-        return jsonify(error=str(e)), 404
-    return app.send_static_file('index.html')
+def add_cor_acao(route):
+    def _route(*args, **kwargs):
+        dec = route(*args, **kwargs)
+        def wrapped(f):
+            @wraps(f)
+            def _f(*args, **kwargs):
+                res = f(*args, **kwargs)
+                r = res[0] if isinstance(res, tuple) else res
+                r.headers.add('Access-Control-Allow-Origin', '*')
+                return res
+            return dec(_f)
+        return wrapped
+    return _route
+
+app.route = add_cor_acao(app.route)
+
+# @app.route('/')
+# def serve_vue_app():
+#     return app.send_static_file('index.html')
+
+# @app.errorhandler(404)
+# def not_found(e):
+#     if request.path.startswith('/api/'):
+#         return jsonify(error=str(e)), 404
+#     return app.send_static_file('index.html')
 
 def secure_filename_with_unicode(filename):
     """Like werkzeug.secure_filename(), but preserves unicode characters"""
@@ -76,40 +91,25 @@ def upload_file():
     filename = secure_filename_with_unicode(file.filename)
     filepath = UPLOAD_FOLDER / filename
     file.save(filepath)
-    logging.info(f"File uploaded: {filename}")
-    
-    if tp == 'vocal':
-        return jsonify({'path': filepath})
-    
-    try:
-        # Load and process the audio file
-        y, sr = librosa.load(filepath)
-        
-        # Extract tempo
-        tempo = librosa.beat.beat_track(y=y, sr=sr)[0]
-        if isinstance(tempo, np.ndarray):
-            tempo = float(tempo[0])
-        logging.info(f"Tempo detected: {tempo}")
-        
-        return jsonify({
-            'tempo': tempo,
-            'path': filepath
-        })
+    logging.info(f"File uploaded: {filepath}")
 
-    except Exception as e:
-        print(traceback.format_exc())
-        return jsonify({'error': str(e)}), 500
+    return jsonify({'path': str(filepath)})
 
 @app.route('/api/sheet', methods=['POST'])
 def generate_sheet():
     """Generate sheet music from audio file"""
-    filepath = UPLOAD_FOLDER / request.form['file']
+    filepath = Path(request.form['path'])
     
     try:
         # Convert to sheet music
         score = audio_to_sheet_music(filepath)
-        ts = score.timeSignature
-        
+
+        # Get time signature
+        ts = next(score.recurse().getElementsByClass(TimeSignature), None)
+        if not ts:
+            ts = TimeSignature()
+            ts.guessFromStream(score)
+            
         # Convert to MusicXML
         xml_path = filepath.with_suffix('.xml')
         score.write('musicxml', xml_path)
@@ -131,9 +131,7 @@ def transcribe_audio():
     if 'file' not in request.files:
         return jsonify({'error': 'No file provided'}), 400
     
-    file = request.files['file']
-    filepath = os.path.join(UPLOAD_FOLDER, file.filename)
-    file.save(filepath)
+    filepath = request.files['path']
     
     # 使用Whisper进行语音识别
     model = whisper.load_model("base")
@@ -188,9 +186,9 @@ def separate_audio():
             return jsonify({'error': str(e)}), 500
 
     return jsonify({
-        'full_file': filename,
-        'vocal_file': vocal_path.name,
-        'bgm_file': bgm_path.name
+        'song': str(input_path),
+        'vocal': str(vocal_path),
+        'instrumental': str(bgm_path)
     })
 
 @app.route('/api/analyze_pitch', methods=['POST'])
