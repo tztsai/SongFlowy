@@ -65,14 +65,31 @@ export class Note {
     this._duration = duration
   }
   set top(top) {
-    this.start = top / beatPixels
+    this.start = (top - this._offset) / beatPixels
   }
   set bottom(bottom) {
-    this.end = bottom / beatPixels
+    this.end = (bottom - this._offset) / beatPixels
+  }
+  set height(height) {
+    this.duration = height / beatPixels
   }
 
   move(offset) {
     this._offset += offset
+  }
+  update({ start, end, top, bottom }) {
+    if (top) {
+      this.height = this.bottom - top
+      this.top = top
+    }
+    if (bottom)
+      this.height = bottom - this.top
+    if (start) {
+      this.duration = this.end - start
+      this.start = start
+    }
+    if (end)
+      this.duration = end - this.start
   }
   resetColor() {
     this.color = noteColors[this.noteName[0]]
@@ -84,7 +101,7 @@ export const useMusicStore = defineStore('music', {
     bpm: 80,
     beatsPerBar: 4,
     beatsPerWholeNote: 4,
-    totalBeats: 240,
+    totalBeats: 60,
     currentBeats: 0,
     isPlaying: false,
     isLooping: false,
@@ -155,12 +172,8 @@ export const useMusicStore = defineStore('music', {
       // Find any overlapping notes with the same name
       for (const exNote of this.notes) {
         if (exNote.noteName === note.noteName && 
-            ((exNote.start <= note.end && exNote.end >= note.start) || 
-             (exNote.end >= note.start && exNote.start <= note.end))) {
-          const start = Math.min(exNote.start, note.start)
-          exNote.duration = Math.max(exNote.end, note.end) - start
-          exNote.start = start
-          return
+            exNote.top > note.top && exNote.top <= note.bottom) {
+          return exNote.update({ top: note.top })
         }
       }
       // Insert note at the correct position to keep this.notes sorted by start

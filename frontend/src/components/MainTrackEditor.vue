@@ -272,6 +272,7 @@ function addNote(event, col) {
   if (draggedNote) return
   const rect = event.target.getBoundingClientRect()
   const y = rect.bottom - event.clientY - hitLineY
+  // TODO: take offset (scroll position) into account
   if (y < 0) return
   const noteName = getScaleNoteForColumn(col)
   musicStore.addNote({ noteName, duration: 1, y })
@@ -283,28 +284,28 @@ function updateNotes() {
   const gravity = 0.0001  // Gravity constant for natural falling motion
 
   notes.value.forEach(note => {
-    const old_b = note.top
+    const pre = note.top
     note.move(-dy)
-    const new_b = note.top
+    const cur = note.top
 
     // Check if note enters hit band
-    if (old_b > hitZoneHeight/2 && new_b <= hitZoneHeight/2) {
+    if (pre > hitZoneHeight/2 && cur <= hitZoneHeight/2) {
       activeHitNotes.set(note.id, note)
     }
 
-    if (old_b > 0 && new_b <= 0) {
-      playNote(note.noteName)
+    if (pre > 0 && cur <= 0) {
+      playNote(note.noteName, note.duration / musicStore.bps)
     }
 
     // Check if note leaves hit band without being hit
-    else if (old_b > -hitZoneHeight/2 && new_b <= -hitZoneHeight/2) {
+    else if (pre > -hitZoneHeight/2 && cur <= -hitZoneHeight/2) {
       if (activeHitNotes.has(note.id)) {
         // Miss - reset combo
         combo.value = 0
         // Visual feedback for miss
         note.color = 'rgba(128, 128, 128, 0.5)'
+        activeHitNotes.delete(note.id)
       }
-      activeHitNotes.delete(note.id)
     }
     
     else if (note.bottom <= -hitZoneHeight) {
@@ -421,12 +422,12 @@ function editNoteLyric(note) {
   noteEl.addEventListener('blur', saveLyric)
 }
 
-function playNote(note) {
+function playNote(note, duration = 0.1) {
   const pianoNote = note2piano(note)
   instrument.keyDown(pianoNote)
   setTimeout(() => {
     instrument.keyUp(pianoNote)
-  }, note.duration * 1000)
+  }, duration * 1000)
 }
 
 function note2piano(note) {
@@ -468,23 +469,23 @@ function handlePitchDetection({ freq, note }) {
 
   // Check for note hits
   for (const [noteId, noteObj] of activeHitNotes) {
-    if (noteObj.noteName === note && !pressedKeys.has(note)) {
+    if (noteObj.noteName === note) {
       const noteEl = document.querySelector(`[data-note-id="${noteObj.id}"]`)
       if (noteEl) handleNoteHit(noteObj, noteEl, note)
     }
   }
 }
 
-function handleNoteHit(note, noteEl, detectedNote) {
+function handleNoteHit(note, noteEl, key) {
   // Visual feedback
   noteEl.style.boxShadow = `0 0 20px ${note.color}`
   noteEl.style.filter = 'brightness(1.8)'
 
   // Calculate accuracy
-  const startAccuracy = Math.abs(hitLineY - note.top) / hitZoneHeight
+  const startAccuracy = Math.abs(note.top) / hitZoneHeight
   
   // Track the note
-  pressedKeys.set(detectedNote, {
+  pressedKeys.set(key, {
     note,
     noteEl,
     startAccuracy,
@@ -516,13 +517,11 @@ function showScorePopup(points, noteEl) {
   const popup = document.createElement('div')
   popup.classList.add('score-popup')
   popup.textContent = `+${Math.round(points)}`
-  popup.style.left = `${noteEl.offsetLeft + noteEl.offsetWidth / 2}px`
-  popup.style.top = `${noteEl.offsetTop}px`
+  popup.style.left = `${noteEl.offsetLeft}px`
+  popup.style.bottom = `${noteEl.offsetBottom}px`
   
   noteEl.parentElement.appendChild(popup)
-  popup.addEventListener('animationend', () => {
-    popup.remove()
-  })
+  popup.addEventListener('animationend', () => popup.remove())
 }
 
 const keyboardChars = "qwertyuiop[]1234567890-="
@@ -587,12 +586,13 @@ const handleKeyUp = async (event) => {
   // Check duration accuracy if key was being tracked
   const keyInfo = pressedKeys.get(key)
   if (keyInfo) {
-    const { note: noteObj, startAccuracy, noteEl, startTime, expectedDuration } = keyInfo
+    const { note, startAccuracy, noteEl, startTime, expectedDuration } = keyInfo
     const actualDuration = Date.now() - startTime
     const durationAccuracy = Math.abs(actualDuration - expectedDuration) / expectedDuration
     const points = calculatePoints(startAccuracy, durationAccuracy)
+    console.log(note.noteName, startAccuracy, durationAccuracy, points)
     
-    updateScoreAndVisuals(points, noteObj, noteEl)
+    updateScoreAndVisuals(points, note, noteEl)
     pressedKeys.delete(key)
   }
 
@@ -848,23 +848,23 @@ onUnmounted(() => {
 <style>
 .score-popup {
   position: absolute;
-  transform: translate(-50%, -100%) scaleY(-1);
   color: #ffff00;
   font-size: 30px;
   font-weight: bold;
   pointer-events: none;
   animation: score-popup-anim 1s ease-out forwards;
+  transform-origin: center bottom;
   z-index: 100;
 }
 
 @keyframes score-popup-anim {
   0% {
     opacity: 1;
-    transform: translate(-50%, -100%) scaleY(-1);
+    transform: translate(0%, 100%) scaleY(-1);
   }
   100% {
     opacity: 0;
-    transform: translate(-50%, -200%) scaleY(-1);
+    transform: translate(0%, 300%) scaleY(-1);
   }
 }
 </style>
