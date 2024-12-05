@@ -8,7 +8,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
-import { useMusicStore } from '@/stores/music'
+import { useMusicStore, beatPixels } from '@/stores/music'
 
 describe('Music Store', () => {
   beforeEach(() => {
@@ -19,14 +19,15 @@ describe('Music Store', () => {
     const store = useMusicStore()
     store.addNote({ noteName: 'C4', start: 1, duration: 2 })
     const note = store.notes[0]
-    expect(note.top).toBe(30) // beatPixels * start
-    expect(note.height).toBe(60) // beatPixels * duration
+    expect(note.top).toBe(beatPixels * 1)
+    expect(note.height).toBe(beatPixels * 2)
+    expect(note.bottom).toBe(beatPixels * 3)
   })
 
   it('should handle note overlaps correctly', () => {
     const store = useMusicStore()
-    store.addNote({ noteName: 'C4', start: 1, duration: 2 })
     store.addNote({ noteName: 'C4', start: 2, duration: 2 })
+    store.addNote({ noteName: 'C4', start: 1, duration: 2 })
     expect(store.notes.length).toBe(1)
     expect(store.notes[0].duration).toBe(3)
   })
