@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 
-const beatPixels = 50
-const baseOctave = 2
+export const beatPixels = 50
+export const baseOctave = 2
 
 export const allNotes = ['C', 'd', 'D', 'e', 'E', 'F', 'g', 'G', 'a', 'A', 'b', 'B']
 

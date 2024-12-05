@@ -5,7 +5,7 @@
         {{ isMicActive ? '🎤 Stop' : '🎤 Start' }}
       </button>
       <div v-if="isMicActive" class="pitch-indicator" :style="pitchIndicatorStyle">
-        {{ pitchDetector.getClosestNote(currentPitch) || 'No pitch detected' }}
+        {{ currentVocalNote || 'No pitch detected' }}
       </div>
     </div>
     <v-container fluid class="track-container">
@@ -15,7 +15,7 @@
         <div class="track-columns">
           <div class="hit-zone"></div>
           <div class="hit-line" :style="{ top: hitLineY + 'px' }">
-            <div v-if="isMicActive && currentPitch" class="pitch-dot" :style="pitchDotStyle"></div>
+            <div v-if="isMicActive && currentVocalPitch" class="pitch-dot" :style="pitchDotStyle"></div>
             <canvas ref="pitchTrailCanvas" class="pitch-trail" v-if="isMicActive"></canvas>
           </div>
           <div v-for="bar in visibleBarLines" :key="'bar-' + bar.id" class="bar-line" :style="{ top: bar.y + 'px' }">
@@ -73,7 +73,8 @@ const isMicActive = ref(false)
 const notes = computed(() => musicStore.notes)
 const currentProgress = computed(() => musicStore.progressPercent)
 const pitchDetector = new PitchDetector()
-const currentPitch = ref(null)
+const currentVocalPitch = ref(null)
+const currentVocalNote = computed(() => pitchDetector.getClosestNote(currentVocalPitch.value))
 const lastPitchTime = ref(0)
 const pitchTimeout = ref(null)
 const barHeight = computed(() => musicStore.barPixels)
@@ -89,6 +90,14 @@ const pitchTrailCanvas = ref(null)
 const pitchHistory = ref([])
 const pitchLifeSpan = 3000  // ms
 
+Object.entries(NoteFrequencies).forEach(([note, freq]) => {
+  console.log(note, freq, pitchDetector.getClosestNote(freq))
+  freq -= 10
+  console.log(freq, pitchDetector.getClosestNote(freq))
+  freq += 20
+  console.log(freq, pitchDetector.getClosestNote(freq))
+})
+
 const columnNotes = computed(() => {
   const notes = []
   for (let i = 1; i <= cols.value; i++) {
@@ -98,7 +107,7 @@ const columnNotes = computed(() => {
 })
 
 const pitchIndicatorStyle = computed(() => {
-  if (!currentPitch.value) return { opacity: 0.5 }
+  if (!currentVocalPitch.value) return { opacity: 0.5 }
   return {
     opacity: 1,
     color: 'white'
@@ -108,9 +117,8 @@ const pitchIndicatorStyle = computed(() => {
 // Calculate x position based on frequency
 function freqToX(freq) {
   if (!freq) return 0
-  if (typeof freq === 'string') {
-    freq = NOTE_FREQUENCIES[freq]
-  }
+  if (typeof freq === 'string')
+    freq = NoteFrequencies[freq]
   const baseKey = musicStore.currentKey[0] + musicStore.baseOctave
   const baseFreq = NoteFrequencies[baseKey]
   const colWidth = document.querySelector('.main-track-area').offsetWidth / cols.value
@@ -139,13 +147,13 @@ function updatePitchTrail(freq) {
 
 // Compute pitch dot position and style
 const pitchDotStyle = computed(() => {
-  if (!currentPitch.value) return {}
-  const x = freqToX(currentPitch.value)
-  const note = pitchDetector.getClosestNote(currentPitch.value)
+  if (!currentVocalPitch.value) return {}
+  const x = freqToX(currentVocalPitch.value)
+  const color = noteColors[currentVocalNote.value[0]] || '#fff'
   return {
     left: `${x}px`,
     transform: 'translate(-50%, -50%)',
-    boxShadow: `0 0 10px 5px ${noteColors[note[0]] || '#fff'}`
+    boxShadow: `0 0 10px 5px ${color}`
   }
 })
 
@@ -297,14 +305,16 @@ function updateNotes() {
       playNote(note.noteName, note.duration / musicStore.bps)
     }
 
-    // Check if note leaves hit band without being hit
-    else if (pre > -hitZoneHeight/2 && cur <= -hitZoneHeight/2) {
+    // Check if hit opportunity is gone
+    else if (note.bottom <= 0 && note.bottom >= -dy) {
       if (activeHitNotes.has(note.id)) {
         // Miss - reset combo
         combo.value = 0
         // Visual feedback for miss
         note.color = 'rgba(128, 128, 128, 0.5)'
         activeHitNotes.delete(note.id)
+      } else if (pressedKeys.has(note.noteName)) {
+        handleNoteRelease(note.noteName)
       }
     }
     
@@ -438,57 +448,19 @@ function note2piano(note) {
   return notes.indexOf(note) + (octave + 1) * 12
 }
 
-async function toggleMicrophone() {
-  try {
-    if (!isMicActive.value) {
-      await pitchDetector.start(handlePitchDetection)
-      isMicActive.value = true
-    } else {
-      pitchDetector.stop()
-      isMicActive.value = false
-      currentPitch.value = null
-      clearTimeout(pitchTimeout.value)
-    }
-  } catch (error) {
-    console.error('Failed to toggle microphone:', error)
-    isMicActive.value = false
-  }
-}
-
-function handlePitchDetection({ freq, note }) {
-  if (!freq) {
-    if (Date.now() - lastPitchTime.value > silenceThresh) {
-      currentPitch.value = null
-    }
-    return
-  }
-
-  lastPitchTime.value = Date.now()
-  currentPitch.value = freq
-  updatePitchTrail(freq)
-
-  // Check for note hits
-  for (const [noteId, noteObj] of activeHitNotes) {
-    if (noteObj.noteName === note) {
-      const noteEl = document.querySelector(`[data-note-id="${noteObj.id}"]`)
-      if (noteEl) handleNoteHit(noteObj, noteEl, note)
-    }
-  }
-}
-
 function handleNoteHit(note, noteEl, key) {
   // Visual feedback
   noteEl.style.boxShadow = `0 0 20px ${note.color}`
   noteEl.style.filter = 'brightness(1.8)'
 
   // Calculate accuracy
-  const startAccuracy = Math.abs(note.top) / hitZoneHeight
+  const startPenalty = note.top / hitZoneHeight
   
   // Track the note
   pressedKeys.set(key, {
     note,
     noteEl,
-    startAccuracy,
+    startPenalty,
     startTime: Date.now(),
     expectedDuration: note.duration / musicStore.bpm * 60000
   })
@@ -496,8 +468,32 @@ function handleNoteHit(note, noteEl, key) {
   activeHitNotes.delete(note.id)
 }
 
-function calculatePoints(startAccuracy, durationAccuracy) {
-  return Math.max(0, 1 - Math.max(startAccuracy, durationAccuracy * 0.8)) * 10
+function handleNoteRelease(key) {
+  // if key.length == 1, then it is a keyboard input (character)
+  // if key.length == 2, then it is a vocal input (note name)
+  const keyInfo = pressedKeys.get(key)
+
+  if (keyInfo) {
+    const { note, startPenalty, noteEl, startTime, expectedDuration } = keyInfo
+    const actualDuration = Date.now() - startTime
+    const points = calculatePoints(startPenalty, actualDuration, expectedDuration, key.length > 1)
+    updateScoreAndVisuals(points, note, noteEl)
+    pressedKeys.delete(key)
+  }
+}
+
+function calculatePoints(startPenalty, actualDuration, expectedDuration, isVocal = false) {
+  const p = actualDuration / expectedDuration - 1
+  let durationPenalty
+  if (isVocal) {
+    startPenalty = Math.max(0, -startPenalty)  // no penalty for early start
+    durationPenalty = Math.max(0, -p) * 0.6  // no penalty for overduration
+  } else {
+    startPenalty = Math.abs(startPenalty)
+    durationPenalty = Math.abs(p) * 0.8
+  }
+  console.log("Penalties:", startPenalty, durationPenalty)
+  return (1 - Math.max(startPenalty, durationPenalty)) * 10
 }
 
 function updateScoreAndVisuals(points, noteObj, noteEl) {
@@ -522,6 +518,54 @@ function showScorePopup(points, noteEl) {
   
   noteEl.parentElement.appendChild(popup)
   popup.addEventListener('animationend', () => popup.remove())
+}
+
+async function toggleMicrophone() {
+  try {
+    if (!isMicActive.value) {
+      await pitchDetector.start(handlePitchDetection)
+      isMicActive.value = true
+    } else {
+      pitchDetector.stop()
+      isMicActive.value = false
+      currentVocalPitch.value = null
+      clearTimeout(pitchTimeout.value)
+    }
+  } catch (error) {
+    console.error('Failed to toggle microphone:', error)
+    isMicActive.value = false
+  }
+}
+
+function handlePitchDetection({freq, db}) {
+  const prevKey = currentVocalNote.value
+
+  if (!freq) {
+    const dt = Date.now() - lastPitchTime.value
+    if (dt > silenceThresh)
+      currentVocalPitch.value = null
+    else if (pressedKeys.has(prevKey) && dt > silenceThresh / 3) {
+      handleNoteRelease(prevKey)
+    }
+    return
+  }
+  lastPitchTime.value = Date.now()
+
+  currentVocalPitch.value = freq
+  const key = currentVocalNote.value
+  // updatePitchTrail(freq)
+
+  if (key !== prevKey && pressedKeys.has(prevKey)) {
+    handleNoteRelease(prevKey)
+  }
+
+  // Check for note hits
+  for (const [noteId, noteObj] of activeHitNotes) {
+    if (noteObj.noteName === key) {
+      const noteEl = document.querySelector(`[data-note-id="${noteObj.id}"]`)
+      if (noteEl) handleNoteHit(noteObj, noteEl, key)
+    }
+  }
 }
 
 const keyboardChars = "qwertyuiop[]1234567890-="
@@ -583,20 +627,8 @@ const handleKeyUp = async (event) => {
   const key = event.key.toLowerCase()
   if (!keyboardChars.includes(key)) return
 
-  // Check duration accuracy if key was being tracked
-  const keyInfo = pressedKeys.get(key)
-  if (keyInfo) {
-    const { note, startAccuracy, noteEl, startTime, expectedDuration } = keyInfo
-    const actualDuration = Date.now() - startTime
-    const durationAccuracy = Math.abs(actualDuration - expectedDuration) / expectedDuration
-    const points = calculatePoints(startAccuracy, durationAccuracy)
-    console.log(note.noteName, startAccuracy, durationAccuracy, points)
-    
-    updateScoreAndVisuals(points, note, noteEl)
-    pressedKeys.delete(key)
-  }
-
-  await instrument.keyUp(keyboard2piano(key))
+  handleNoteRelease(key)
+  instrument.keyUp(keyboard2piano(key))
 }
 
 // Watch for play state changes

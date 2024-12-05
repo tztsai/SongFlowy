@@ -25,7 +25,13 @@ Object.entries(NoteFrequencies).forEach(([note, freq]) => {
   }
 })
 
-const getUserMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+var getUserMedia = null
+
+try {
+  getUserMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices)
+} catch {
+  console.error('cannot find media devices')
+}
 
 const PitchAnalyzer = (function () {
 
@@ -541,24 +547,19 @@ export class PitchDetector {
             this.freqBuffer.shift()
           }
           const closestNotes = this.freqBuffer.map(this.getClosestNote);
-          console.log(closestNotes)
           for (let i = 0; i < closestNotes.length - 1; i++) {
             const f1 = NoteFrequencies[closestNotes[i]]
             const f2 = NoteFrequencies[closestNotes[i + 1]]
-            // delay the callback and clear the buffer on sudden pitch jumps
-            // if jumping to a higher pitch, ignore this pitch
-            // if jumping to a lower pitch, keep this pitch
             if (f2 / f1 > 1.6)
               return this.freqBuffer.splice(0, this.freqBuffer.length)
             else if (f2 / f1 < 0.6)
               return this.freqBuffer.splice(0, this.freqBuffer.length - 1)
+            // delay the callback and clear the buffer on sudden pitch jumps
+            // if jumping to a higher pitch, ignore this pitch
+            // if jumping to a lower pitch, keep this pitch
           }
           if (this.freqBuffer.length === this.freqBufferSize)
-            callback({
-              freq,
-              note: this.getClosestNote(freq),
-              db: tone.db
-            });
+            callback({ freq, db: tone.db });
         }
       };
 
@@ -590,28 +591,21 @@ export class PitchDetector {
     this.pitchAnalyzer = null;
   }
 
+  getNoteFreq(note) {
+    return teoria.Note.fromString(note).fq()
+  }
+
   getClosestNote(freq) {
     if (!freq) return null;
 
-    try {
-      const note = teoria.note(teoria.note.fromFrequency(freq).note.coord)
-      let name = note.name().toUpperCase()
-      const accidental = note.accidental()
-      const octave = note.octave()
-
-      if (accidental === 'b') {
-        name = name.toLowerCase()
-      } else if (accidental === '#') {
-        name = String.fromCharCode(name.charCodeAt(0) + 1).toLowerCase()
-        if (name === 'h') {
-          name = 'a'
-        }
-      }
-
-      return name + octave
-    } catch (err) {
-      console.warn('Error getting closest note:', err)
-      return null
+    const p = Math.log2(freq / 440.0)
+    let o = Math.floor(p)
+    let k = Math.round((p - o) * 12) - 3
+    if (k < 0) {
+      k += 12; o--
     }
+    const note = "CdDeEFgGaAbB"[k]
+    const octave = o + 5
+    return note + octave
   }
 }
