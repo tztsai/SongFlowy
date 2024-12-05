@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 
 const beatPixels = 50
-const baseOctave = 3
+const baseOctave = 2
 
 export const allNotes = ['C', 'd', 'D', 'e', 'E', 'F', 'g', 'G', 'a', 'A', 'b', 'B']
 
@@ -32,7 +32,7 @@ const scaleMap = {
   'bm': ['b', 'C', 'd', 'e', 'F', 'g', 'a'],
 }
 
-export const noteColors = {'D': '#FF0000', 'd': '#FF8000', 'C': '#FFD700', 'B': '#00FF00', 'b': '#00FFAA', 'A': '#00FFFF', 'a': '#0080FF', 'G': '#0000FF', 'g': '#8000FF', 'F': '#FF00FF', 'E': '#FF0080', 'e': '#FF4040'}
+export const noteColors = {'G': '#FF0000', 'g': '#FF8000', 'F': '#FFD700', 'E': '#00FF00', 'e': '#00FFAA', 'D': '#00FFFF', 'd': '#0084FF', 'C': '#0000FF', 'B': '#8000FF', 'b': '#FF00FF', 'A': '#FF0080', 'a': '#FF4040'}
 
 // Note prototype for consistent note creation
 export class Note {
@@ -105,7 +105,7 @@ export const useMusicStore = defineStore('music', {
     currentBeats: 0,
     isPlaying: false,
     isLooping: false,
-    currentKey: 'C',
+    currentKey: 'G',
     baseOctave: baseOctave,
     notes: [],
     lyrics: '',  // Add lyrics property
@@ -148,8 +148,8 @@ export const useMusicStore = defineStore('music', {
     },
     setKey(key) {
       this.currentKey = translateNote(key.replace('m', '')) + (key.includes('m') ? 'm' : '')
-      if ('efgab'.includes(key[0].toLowerCase())) {
-        this.baseOctave = baseOctave - 1
+      if ('cd'.includes(key[0].toLowerCase())) {
+        this.baseOctave = baseOctave + 1
       }
     },
     setTimeSignature(numerator, denominator) {
@@ -158,7 +158,7 @@ export const useMusicStore = defineStore('music', {
     },
     setNotes(notes) {
       this.notes = []
-      notes.forEach(note => this.addNote(note))
+      notes.slice(0, 90).forEach(note => this.addNote(note))
       this.totalBeats = Math.ceil(Math.max(...this.notes.map(note => note.end)))
     },
     addNote(note) {

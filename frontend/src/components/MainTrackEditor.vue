@@ -13,7 +13,7 @@
       <div class="main-track-area">
         <!-- Track Columns -->
         <div class="track-columns">
-          <div class="hit-band"></div>
+          <div class="hit-zone"></div>
           <div class="hit-line" :style="{ top: hitLineY + 'px' }">
             <div v-if="isMicActive && currentPitch" class="pitch-dot" :style="pitchDotStyle"></div>
             <canvas ref="pitchTrailCanvas" class="pitch-trail" v-if="isMicActive"></canvas>
@@ -79,8 +79,8 @@ const pitchTimeout = ref(null)
 const barHeight = computed(() => musicStore.barPixels)
 const sheetHeight = computed(() => musicStore.sheetPixels)
 const columnWidth = computed(() => 75 / cols.value)
-const autoPlayHitNotes = ref(true)
-const hitZoneHeight = 30
+const autoPlayNotes = ref(false)
+const hitZoneHeight = 40
 const hitZoneTop = 100
 const hitZoneBottom = hitZoneTop - hitZoneHeight
 const hitLineY = (hitZoneTop + hitZoneBottom) / 2
@@ -293,7 +293,7 @@ function updateNotes() {
       activeHitNotes.set(note.id, note)
     }
 
-    if (pre > 0 && cur <= 0) {
+    if (pre > 0 && cur <= 0 && autoPlayNotes.value) {
       playNote(note.noteName, note.duration / musicStore.bps)
     }
 
@@ -728,16 +728,16 @@ onUnmounted(() => {
   z-index: 3;
 }
 
-.hit-band {
+.hit-zone {
   position: absolute;
   top: v-bind(hitZoneBottom + 'px');
   height: v-bind(hitZoneHeight + 'px');
   left: 0;
   right: 0;
   background: linear-gradient(to bottom,
-      rgba(255, 255, 255, 0.1),
-      rgba(204, 197, 139, 0.58) 50%,
-      rgba(255, 255, 255, 0.1));
+      rgba(255, 255, 255, 0.02),
+      rgba(150, 150, 100, 0.36) 50%,
+      rgba(255, 255, 255, 0.02));
   pointer-events: none;
   z-index: 2;
 }
@@ -745,8 +745,8 @@ onUnmounted(() => {
 .hit-line {
   position: absolute;
   width: 100%;
-  height: 2px;
-  background: rgba(255, 255, 255, 0.2);
+  height: 1px;
+  background: rgba(255, 255, 255, 0.3);
   z-index: 3;
 }
 

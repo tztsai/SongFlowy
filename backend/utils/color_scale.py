@@ -50,7 +50,7 @@ def wavelength_to_rgb(wavelength_nm):
 
 def get_note_colors():
     """Get colors for each note in the chromatic scale."""
-    notes = ['D', 'd', 'C', 'B', 'b', 'A', 'a', 'G', 'g', 'F', 'E', 'e']
+    notes = ['G', 'g', 'F', 'E', 'e', 'D', 'd', 'C', 'B', 'b', 'A', 'a']
 
     # Custom color palette designed for musical notes
     # Using a combination of warm and cool colors with good contrast
@@ -61,7 +61,7 @@ def get_note_colors():
         '#00FF00',  # Bright Green
         '#00FFAA',  # Spring Green
         '#00FFFF',  # Cyan
-        '#0080FF',  # Sky Blue
+        '#0084FF',  # Sky Blue
         '#0000FF',  # Blue
         '#8000FF',  # Purple
         '#FF00FF',  # Magenta
