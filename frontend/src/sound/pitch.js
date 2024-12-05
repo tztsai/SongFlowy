@@ -533,6 +533,8 @@ export class PitchDetector {
       const processor = this.audioContext.createScriptProcessor(1024, 1, 1);
 
       processor.onaudioprocess = (e) => {
+        if (!this.pitchAnalyzer) return;
+        
         const input = e.inputBuffer.getChannelData(0);
         this.pitchAnalyzer.input(input);
         this.pitchAnalyzer.process();
