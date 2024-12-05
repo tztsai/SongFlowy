@@ -14,13 +14,10 @@
         </v-col>
         <v-col cols="2">
           <v-select v-model="currentKey" :items="keySignatures" label="Key" density="compact" hide-details
-          style="max-width: 80px;"
-          @update:modelValue="updateKey" />
+            style="max-width: 80px;" @update:modelValue="updateKey" />
         </v-col>
         <v-col cols="3">
-          <v-slider v-model="bpm" :min="30" :max="180" 
-          style="max-width: 200px;"
-          density="compact" hide-details>
+          <v-slider v-model="bpm" :min="30" :max="180" style="max-width: 200px;" density="compact" hide-details>
             <template v-slot:append>
               <div class="text-medium-emphasis">{{ Math.round(bpm) }} BPM</div>
             </template>
@@ -29,8 +26,8 @@
         <v-col cols="auto">
           <v-menu>
             <template v-slot:activator="{ props }">
-              <v-btn color="primary" prepend-icon="mdi-upload" size="large" v-bind="props"
-                :loading="isUploading" :disabled="isUploading">
+              <v-btn color="primary" prepend-icon="mdi-upload" size="large" v-bind="props" :loading="isUploading"
+                :disabled="isUploading">
                 Upload
               </v-btn>
             </template>
@@ -71,7 +68,6 @@ const bgmInput = ref(null)
 const combinedInput = ref(null)
 const uploadType = ref('separate') // 'separate' or 'combined'
 const isUploading = ref(false)
-const isSeparating = ref(false)
 const uploadError = ref(null)
 
 const keySignatures = [
@@ -107,16 +103,13 @@ const currentTime = computed(() => {
 })
 
 function triggerFileUpload(type) {
-  switch(type) {
+  switch (type) {
     case 'vocal':
-      vocalInput.value.click()
-      break
+      return vocalInput.value.click()
     case 'bgm':
-      bgmInput.value.click()
-      break
+      return bgmInput.value.click()
     case 'combined':
-      combinedInput.value.click()
-      break
+      return combinedInput.value.click()
   }
 }
 
@@ -124,7 +117,7 @@ async function handleFileUpload(type) {
   const input = type === 'vocal' ? vocalInput.value :
                 type === 'bgm' ? bgmInput.value :
                 combinedInput.value
-                
+
   const file = input.files[0]
   if (!file) return
 
@@ -134,34 +127,39 @@ async function handleFileUpload(type) {
   formData.append('file', file)
   formData.append('type', type)
 
+  var vocalData, bgmData
+
   try {
     if (type === 'combined') {
-      isSeparating.value = true
-      // First separate the tracks
-      const { vocal_file, bgm_file } = await apiClient.post('/api/separate', formData)
-      const bgmUrl = (await apiClient.get(`/uploads/${bgm_file}`)).url
+      // First separate the stems
+      const { full_file, vocal_file, bgm_file } = await apiClient.post('/api/separate', formData)
 
       const formData2 = new FormData()
       formData2.append('file', vocal_file)
-      const sheetData = await apiClient.post('/api/sheet', formData2)
+
+      vocalData = await apiClient.post('/api/sheet', formData2)
+      bgmData = await apiClient.get(`/uploads/${full_file}`)
       
-      musicStore.setNotes(sheetData.notes)
-      musicStore.setBGMPath(bgmUrl)
-    } else {
-      const data = await apiClient.post('/api/upload', formData)
-      
-      if (type === 'vocal') {
-        musicStore.setNotes(data.notes)
-      } else if (type === 'bgm') {
-        musicStore.setBGMPath(data.path)
-      }
+    } else if (type === 'vocal') {
+      vocalData = await apiClient.post('/api/upload', formData)
+    } else if (type === 'bgm') {
+      bgmData = await apiClient.post('/api/upload', formData)
+    }
+
+    if (vocalData) {
+      musicStore.setBpm(vocalData.tempo)
+      musicStore.setKey(vocalData.key)
+      musicStore.setTimeSignature(...vocalData.time_signature)
+      musicStore.setNotes(vocalData.notes)
+    }
+    if (bgmData) {
+      musicStore.setBGMPath(bgmData.url)
     }
   } catch (error) {
     console.error('Upload error:', error)
     uploadError.value = error.message
   } finally {
     isUploading.value = false
-    isSeparating.value = false
     input.value = null
   }
 }

@@ -18,11 +18,11 @@
             <div v-if="isMicActive && currentPitch" class="pitch-dot" :style="pitchDotStyle"></div>
             <canvas ref="pitchTrailCanvas" class="pitch-trail" v-if="isMicActive"></canvas>
           </div>
-          <div v-for="bar in barLines" :key="'bar-' + bar.id" class="bar-line" :style="{ top: bar.y + 'px' }">
+          <div v-for="bar in visibleBarLines" :key="'bar-' + bar.id" class="bar-line" :style="{ top: bar.y + 'px' }">
           </div>
           <div v-for="col in cols" :key="col" class="track-column" @click="addNote($event, col)"
             @mousemove="handleDrag($event)" @mouseup="stopDragging($event)">
-            <div v-for="note in getNotesInColumn(col)" :key="note.id" class="note" :style="getNoteStyle(note)"
+            <div v-for="note in visibleNotesInColumn(col)" :key="note.id" class="note" :style="getNoteStyle(note)"
               @mousedown="startDragging(note, $event)" @dblclick="editNoteLyric(note)" :data-note-id="note.id">
               {{ note.lyric || note.noteName }}
             </div>
@@ -62,7 +62,7 @@ import { Piano } from '@/sound/piano'
 import { PitchDetector, NoteFrequencies } from '@/sound/pitch'
 import { reactive } from 'vue'
 
-const cols = ref(18)
+const cols = ref(24)
 const barLines = ref([])
 const score = ref(0)
 const combo = ref(0)
@@ -79,11 +79,12 @@ const pitchTimeout = ref(null)
 const barHeight = musicStore.barPixels
 const sheetHeight = musicStore.sheetPixels
 const columnWidth = computed(() => 75 / cols.value)
+const autoPlayHitNotes = ref(true)
 const hitZoneHeight = 30
 const hitZoneTop = 100
 const hitZoneBottom = hitZoneTop - hitZoneHeight
 const hitLineY = (hitZoneTop + hitZoneBottom) / 2
-const silenceThresh = 2000 // ms of silence before considering note released
+const silenceThresh = 1500 // ms of silence before considering note released
 const pitchTrailCanvas = ref(null)
 const pitchHistory = ref([])
 const pitchLifeSpan = 3000  // ms
@@ -156,6 +157,9 @@ let dragStartY = 0
 let animationFrame = null
 let isDraggingProgress = false
 
+const scrollTop = ref(0)
+const containerHeight = ref(window.innerHeight)
+
 function initBarLines() {
   const container = document.querySelector('.track-columns')
   if (!container) return
@@ -170,8 +174,24 @@ function initBarLines() {
   }
 }
 
-function getNotesInColumn(col) {
-  return notes.value.filter(note => note.noteName === getScaleNoteForColumn(col))
+// Only show bar lines within the visible area
+const visibleBarLines = computed(() => {
+  const visibleStart = scrollTop.value - 100 // Add some buffer
+  const visibleEnd = scrollTop.value + containerHeight.value + 100
+  return barLines.value.filter(bar => 
+    bar.y >= visibleStart && bar.y <= visibleEnd
+  )
+})
+
+function visibleNotesInColumn(col) {
+  const visibleStart = scrollTop.value - hitLineY - 100 // Add some buffer
+  const visibleEnd = scrollTop.value + containerHeight.value - hitLineY + 100
+  return notes.value.filter(note => {
+    if (note.noteName !== getScaleNoteForColumn(col)) return false
+    const noteTop = note.top + hitLineY
+    const noteBottom = noteTop + note.height
+    return noteBottom >= visibleStart && noteTop <= visibleEnd
+  })
 }
 
 function getScaleNoteForColumn(col) {
@@ -237,7 +257,7 @@ function updateProgressFromMouseY(event) {
 
   notes.value.forEach(note => {
     note.move(delta)
-    if (note.top <= 0) {
+    if (note.bottom <= -hitZoneHeight) {
       note.move(sheetHeight)
       note.resetColor()
     } else if (note.top >= sheetHeight) {
@@ -273,6 +293,10 @@ function updateNotes() {
       activeHitNotes.set(note.id, note)
     }
 
+    if (old_b > 0 && new_b <= 0) {
+      playNote(note.noteName)
+    }
+
     // Check if note leaves hit band without being hit
     else if (old_b > -hitZoneHeight/2 && new_b <= -hitZoneHeight/2) {
       if (activeHitNotes.has(note.id)) {
@@ -284,7 +308,7 @@ function updateNotes() {
       activeHitNotes.delete(note.id)
     }
     
-    else if (note.top <= -hitLineY) {
+    else if (note.bottom <= -hitZoneHeight) {
       note.move(sheetHeight)
       note.resetColor()
     }
@@ -517,6 +541,13 @@ const handleKeyDown = async (event) => {
   
   if (event.repeat) return // Prevent key repeat
 
+  // Handle keyboard shortcuts for note delay
+  if (event.key === 'ArrowUp') {
+    return musicStore.addDelay(1)
+  } else if (event.key === 'ArrowDown') {
+    return musicStore.addDelay(-1)
+  }
+
   const key = event.key.toLowerCase()
 
   if (!keyboardChars.includes(key)) return
@@ -528,9 +559,9 @@ const handleKeyDown = async (event) => {
   // hightlight the corresponding scale note
   for (const chip of document.querySelectorAll('.scale-note-chip')) {
     if (note2piano(chip.textContent) === pianoKey) {
-      chip.style.border = '1px solid #fff'
+      chip.style.boxShadow = '0 0 10px #fff'
       setTimeout(() => {
-        chip.style.border = ''
+        chip.style.boxShadow = ''
       }, 200)
       break
     }
@@ -582,6 +613,17 @@ onMounted(() => {
   initBarLines()
   window.addEventListener('keydown', handleKeyDown)
   window.addEventListener('keyup', handleKeyUp)
+  const container = document.querySelector('.track-container')
+  if (container) {
+    const observer = new ResizeObserver((entries) => {
+      containerHeight.value = entries[0].contentRect.height
+    })
+    observer.observe(container)
+    
+    container.addEventListener('scroll', () => {
+      scrollTop.value = container.scrollTop
+    })
+  }
 })
 
 onUnmounted(() => {
@@ -716,7 +758,7 @@ onUnmounted(() => {
   background: radial-gradient(circle, #fff 0%, rgba(255,255,255,0.3) 70%, transparent 100%);
   border-radius: 50%;
   z-index: 4;
-  transition: all 0.4s ease-out;
+  transition: all 0.2s ease-out;
 }
 
 .pitch-trail {

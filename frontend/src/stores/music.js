@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 
-const beatPixels = 30
+const beatPixels = 50
+const baseOctave = 3
 
 export const allNotes = ['C', 'd', 'D', 'e', 'E', 'F', 'g', 'G', 'a', 'A', 'b', 'B']
 
@@ -83,12 +84,12 @@ export const useMusicStore = defineStore('music', {
     bpm: 80,
     beatsPerBar: 4,
     beatsPerWholeNote: 4,
-    totalBeats: 24,
+    totalBeats: 240,
     currentBeats: 0,
     isPlaying: false,
     isLooping: false,
     currentKey: 'C',
-    baseOctave: 3,
+    baseOctave: baseOctave,
     notes: [],
     lyrics: '',  // Add lyrics property
     bgm: null,
@@ -106,7 +107,7 @@ export const useMusicStore = defineStore('music', {
             this.currentBeats = 0
           } else {
             this.currentBeats = this.totalBeats
-            this.isPlaying = false
+            this.setIsPlaying(false)  // Stop playback
           }
         }
       }
@@ -129,13 +130,19 @@ export const useMusicStore = defineStore('music', {
       }
     },
     setKey(key) {
-      key = translateNote(key.replace('m', '')) + (key.includes('m') ? 'm' : '')
-      this.currentKey = key
-      this.currentScale = scaleMap[key]
+      this.currentKey = translateNote(key.replace('m', '')) + (key.includes('m') ? 'm' : '')
+      if ('efgab'.includes(key[0].toLowerCase())) {
+        this.baseOctave = baseOctave - 1
+      }
+    },
+    setTimeSignature(numerator, denominator) {
+      this.beatsPerBar = numerator
+      this.beatsPerWholeNote = denominator
     },
     setNotes(notes) {
       this.notes = []
       notes.forEach(note => this.addNote(note))
+      this.totalBeats = Math.ceil(Math.max(...this.notes.map(note => note.end)))
     },
     addNote(note) {
       if (!note) return
@@ -180,6 +187,9 @@ export const useMusicStore = defineStore('music', {
         this.notes.splice(index, 1)
       }
     },
+    addDelay(beats) {
+      this.notes.forEach(note => note.start += beats)
+    },
     setNoteLyric(noteId, lyric) {
       const note = this.notes.find(n => n.id === noteId)
       if (note) {
@@ -209,6 +219,9 @@ export const useMusicStore = defineStore('music', {
         this.bgm = null;
       }
 
+      // Reset time to 0
+      this.currentBeats = 0
+
       // Create new audio element for BGM
       const audio = new Audio();
       this.bgm = audio;
@@ -218,7 +231,6 @@ export const useMusicStore = defineStore('music', {
       // Set up event listeners
       audio.addEventListener('loadedmetadata', () => {
         console.log('BGM loaded, duration:', audio.duration)
-        this.setDuration(audio.duration)
       })
 
       audio.addEventListener('error', (e) => {
@@ -229,11 +241,12 @@ export const useMusicStore = defineStore('music', {
 
   getters: {
     bps: (state) => state.bpm / 60,
+    duration: (state) => state.totalBeats / state.bps,
+    currentTime: (state) => state.currentBeats / state.bps,
     barPixels: (state) => beatPixels * state.beatsPerBar,
     sheetPixels: (state) => state.barPixels * state.numBars,
     numBars: (state) => Math.ceil(state.totalBeats / state.beatsPerBar),
     totalTime: (state) => state.totalBeats / state.bps,
-    currentTime: (state) => state.currentBeats / state.bps,
     progressPercent: (state) => state.currentBeats / state.totalBeats * 100,
     timeSignature: (state) => [state.beatsPerBar, state.beatsPerWholeNote],
     currentScale: (state) => scaleMap[state.currentKey],

@@ -29,7 +29,7 @@ const getUserMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDev
 
 const PitchAnalyzer = (function () {
 
-  var pi = Math.PI,
+  const pi = Math.PI,
     pi2 = pi * 2,
     cos = Math.cos,
     pow = Math.pow,
@@ -193,10 +193,10 @@ const PitchAnalyzer = (function () {
     bufWrite: 0,
 
     MIN_FREQ: 45,
-    MAX_FREQ: 5000,
+    MAX_FREQ: 1200,
 
     sampleRate: 44100,
-    step: 200,
+    step: 300,
     oldFreq: 0.0,
 
     peak: 0.0,
@@ -524,7 +524,7 @@ export class PitchDetector {
       const source = this.audioContext.createMediaStreamSource(this.stream);
 
       // Create audio processor
-      const processor = this.audioContext.createScriptProcessor(4096, 1, 1);
+      const processor = this.audioContext.createScriptProcessor(1024, 1, 1);
 
       processor.onaudioprocess = (e) => {
         const input = e.inputBuffer.getChannelData(0);
@@ -541,15 +541,24 @@ export class PitchDetector {
             this.freqBuffer.shift()
           }
           const closestNotes = this.freqBuffer.map(this.getClosestNote);
+          console.log(closestNotes)
           for (let i = 0; i < closestNotes.length - 1; i++) {
-            // should remain stable in the same octave
-            if (closestNotes[i][1] != closestNotes[i + 1][1]) return
+            const f1 = NoteFrequencies[closestNotes[i]]
+            const f2 = NoteFrequencies[closestNotes[i + 1]]
+            // delay the callback and clear the buffer on sudden pitch jumps
+            // if jumping to a higher pitch, ignore this pitch
+            // if jumping to a lower pitch, keep this pitch
+            if (f2 / f1 > 1.6)
+              return this.freqBuffer.splice(0, this.freqBuffer.length)
+            else if (f2 / f1 < 0.6)
+              return this.freqBuffer.splice(0, this.freqBuffer.length - 1)
           }
-          callback({
-            freq,
-            note: this.getClosestNote(freq),
-            db: tone.db
-          });
+          if (this.freqBuffer.length === this.freqBufferSize)
+            callback({
+              freq,
+              note: this.getClosestNote(freq),
+              db: tone.db
+            });
         }
       };
 

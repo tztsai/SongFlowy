@@ -41,7 +41,7 @@ function isLastBar(barIndex) {
 }
 
 function getBarLyrics(notes) {
-  return notes.map(note => note.lyric || '').join('')
+  return notes.map(note => note.lyric || '').filter(w => w.length > 0).join(',')
 }
 
 async function focusNextBar(barIndex) {
@@ -55,9 +55,9 @@ async function focusNextBar(barIndex) {
 
 function splitLyrics(value) {
   if (/[ -~]+/.test(value)) {  // ascii characters
-    return value.split(/\s+/).filter(w => w.length > 0)
+    return value.split(/[\s,]+/).filter(w => w.length > 0)
   }
-  return value.trim().split('')
+  return value.split(/[\s,]+/).filter(w => w.length > 0)
 }
 
 function updateBarLyrics(barIndex, value) {
@@ -68,17 +68,17 @@ function updateBarLyrics(barIndex, value) {
   const maxChars = currentBar.length
   
   // If we're in the last bar, just update normally and return
-  if (isLastBar(barIndex)) {
-    currentBar.forEach((note, index) => {
-      if (note && index < maxChars) {
-        musicStore.setNoteLyric(note.id, chars[index] || '')
-      }
-    })
-    return value.slice(0, maxChars)
-  }
+  // if (isLastBar(barIndex)) {
+  //   currentBar.forEach((note, index) => {
+  //     if (note && index < maxChars) {
+  //       musicStore.setNoteLyric(note.id, chars[index] || '')
+  //     }
+  //   })
+  //   return value.slice(0, maxChars)
+  // }
   
   // If we have more characters than notes in current bar
-  if (chars.length > maxChars) {
+  if (false && chars.length > maxChars) {
     // Update current bar
     currentBar.forEach((note, index) => {
       if (note) {

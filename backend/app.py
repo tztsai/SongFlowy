@@ -12,15 +12,15 @@ import music21
 import traceback
 import plotly
 import json
+import re
 
 logging.basicConfig(level=logging.INFO)
 
 app = Flask(__name__)
 
 # Enable CORS for all routes
-CORS(app)
+CORS(app, resources={r"/*": {"origins": "*"}})
 
-# Add CORS headers to all responses
 @app.after_request
 def after_request(response):
     response.headers.add('Access-Control-Allow-Origin', '*')
@@ -42,6 +42,27 @@ def not_found(e):
         return jsonify(error=str(e)), 404
     return app.send_static_file('index.html')
 
+def secure_filename_with_unicode(filename):
+    """Like werkzeug.secure_filename(), but preserves unicode characters"""
+    if isinstance(filename, str):
+        from unicodedata import normalize
+        filename = normalize('NFKD', filename)
+    
+    # Remove explicit path separators and relative path components
+    filename = os.path.basename(filename)
+    
+    # Replace dangerous characters with underscores
+    filename = re.sub(r'[<>:"/\\|?*\x00-\x1F]', '_', filename)
+    
+    # Remove leading/trailing spaces and dots
+    filename = filename.strip('. ')
+    
+    # Ensure the filename is not empty
+    if not filename:
+        filename = '_'
+    
+    return filename
+
 @app.route('/api/upload', methods=['POST'])
 def upload_file():
     if 'file' not in request.files:
@@ -52,16 +73,13 @@ def upload_file():
         return jsonify({'error': 'No file selected'}), 400
         
     tp = request.form.get('type', 'vocal')
-    filename = secure_filename(file.filename)
+    filename = secure_filename_with_unicode(file.filename)
     filepath = UPLOAD_FOLDER / filename
     file.save(filepath)
     logging.info(f"File uploaded: {filename}")
     
-    # Return relative URL for frontend
-    relative_path = f'/uploads/{filename}'
-    
     if tp == 'vocal':
-        return jsonify({'path': relative_path})
+        return jsonify({'path': filepath})
     
     try:
         # Load and process the audio file
@@ -75,7 +93,7 @@ def upload_file():
         
         return jsonify({
             'tempo': tempo,
-            'path': relative_path
+            'path': filepath
         })
 
     except Exception as e:
@@ -89,19 +107,19 @@ def generate_sheet():
     
     try:
         # Convert to sheet music
-        score = audio_to_sheet_music(str(filepath))
+        score = audio_to_sheet_music(filepath)
+        ts = score.timeSignature
         
         # Convert to MusicXML
         xml_path = filepath.with_suffix('.xml')
         score.write('musicxml', xml_path)
         
-        # Convert to ABC notation
-        abc_path = filepath.with_suffix('.abc')
-        score.write('abc', abc_path)
-        
         return jsonify({
             'musicxml': str(xml_path),
-            'notes': get_score_notes(score)
+            'tempo': score.metronomeMarkBoundaries()[0][2].number,
+            'notes': get_score_notes(score),
+            'key': score.analyze('key').tonic.name,
+            'time_signature': (ts.numerator, ts.denominator)
         })
         
     except Exception as e:
@@ -138,7 +156,7 @@ def separate_audio():
         return jsonify({'error': 'No file selected'}), 400
 
     # Save uploaded file
-    filename = secure_filename(file.filename)
+    filename = secure_filename_with_unicode(file.filename)
     input_path = UPLOAD_FOLDER / filename
     
     # Create output paths
@@ -152,15 +170,15 @@ def separate_audio():
 
             # Initialize the Separator with other configuration properties, below
             separator = Separator(
-                output_format=bgm_path.suffix,
+                output_format=bgm_path.suffix.strip('.'),
                 output_dir=str(UPLOAD_FOLDER),
             )
             separator.load_model(model_filename='UVR-MDX-NET-Inst_HQ_3.onnx')
 
             outputs = separator.separate(
                 str(input_path),
-                primary_output_name=bgm_path.stem.split('.')[0],
-                secondary_output_name=vocal_path.stem.split('.')[0]
+                primary_output_name=bgm_path.stem,
+                secondary_output_name=vocal_path.stem
             )
 
             logging.info("Separation completed: %s", outputs)
@@ -170,6 +188,7 @@ def separate_audio():
             return jsonify({'error': str(e)}), 500
 
     return jsonify({
+        'full_file': filename,
         'vocal_file': vocal_path.name,
         'bgm_file': bgm_path.name
     })
@@ -249,57 +268,33 @@ def quantize_duration(duration, base_duration=0.25):
 
 def audio_to_sheet_music(audio_path):
     """Convert audio file to sheet music notation"""
-    # Load the audio file
-    y, sr = librosa.load(audio_path)
-    
-    # Extract pitch and timing information
-    pitches, magnitudes = librosa.piptrack(y=y, sr=sr)
-    
-    # Get onset frames
-    onset_frames = librosa.onset.onset_detect(y=y, sr=sr, units='frames')
-    onset_times = librosa.frames_to_time(onset_frames, sr=sr)
-    
-    # Create a music21 score
-    score = music21.stream.Score()
-    part = music21.stream.Part()
-    
-    # Detect tempo
-    tempo = librosa.beat.beat_track(y=y, sr=sr)[0]
-    if isinstance(tempo, np.ndarray):
-        tempo = float(tempo[0])
-    mm = music21.tempo.MetronomeMark(number=tempo)
-    part.append(mm)
+    from basic_pitch.inference import predict
+    from basic_pitch import ICASSP_2022_MODEL_PATH
+
+    midi_path = audio_path.with_suffix('.mid')
+
+    if not midi_path.exists():
+        logging.info(f"Converting {audio_path} to MIDI...")
+
+        # Load the audio file
+        y, sr = librosa.load(str(audio_path))
         
-    # Process each onset
-    for i, onset_time in enumerate(onset_times):
-        # Get the frame index for this onset
-        frame_idx = librosa.time_to_frames(onset_time, sr=sr)
-        if frame_idx >= len(pitches[0]):
-            continue
-            
-        # Find the strongest pitch at this onset
-        pitch_idx = magnitudes[:, frame_idx].argmax()
-        freq = pitches[pitch_idx, frame_idx]
-        
-        if freq > 0:  # If we detected a valid pitch
-            # Convert frequency to MIDI note number
-            midi_note = librosa.hz_to_midi(freq)
-            
-            # Create a music21 note
-            note = music21.note.Note()
-            note.pitch.midi = int(round(midi_note))
-            
-            # Set duration (quarter note by default)
-            if i < len(onset_times) - 1:
-                duration = onset_times[i + 1] - onset_time
-                quarter_note_duration = duration * (tempo / 60)  # Convert to quarter note duration
-                note.quarterLength = quantize_duration(quarter_note_duration)
-            else:
-                note.quarterLength = 1.0  # Default to quarter note for last note
-            
-            part.append(note)
-    
-    score.append(part)
+        # Detect tempo
+        tempo = librosa.beat.beat_track(y=y, sr=sr)[0]
+        if isinstance(tempo, np.ndarray):
+            tempo = float(tempo[0])
+
+        logging.info(f"Detected tempo: {tempo} bpm")
+        model_output, midi_data, note_events = predict(
+            audio_path, midi_tempo=tempo,
+            onset_threshold=0.6, frame_threshold=0.2,
+        )
+
+        with open(midi_path, 'wb') as f:
+            midi_data.write(f)
+
+    # Convert to music21 score
+    score = music21.converter.parse(midi_path)
     return score
 
 def get_score_notes(score):
