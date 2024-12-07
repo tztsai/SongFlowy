@@ -1,8 +1,6 @@
 import { defineStore } from 'pinia'
 
-export const beatPixels = 50
 export const baseOctave = 2
-
 export const allNotes = ['C', 'd', 'D', 'e', 'E', 'F', 'g', 'G', 'a', 'A', 'b', 'B']
 
 const scaleMap = {
@@ -36,24 +34,27 @@ export const noteColors = {'G': '#FF0000', 'g': '#FF8000', 'F': '#FFD700', 'E': 
 
 // Note prototype for consistent note creation
 export class Note {
-  constructor({ id, noteName, start, duration }) {
+  constructor({ id, noteName, start, duration, store }) {
     if (noteName.length != 2)
       throw new Error(`Invalid note name: ${noteName}`)
     this.id = id
     this.noteName = noteName
     this.color = noteColors[noteName[0]]
+    this.store = store
     this.lyric = ''
+    const [k, o] = noteName.split('')
+    this._number = allNotes.indexOf(k) + 12 * parseInt(o)
     this._start = start  // in beats
     this._duration = duration  // in beats
-    this._offset = 0
   }
 
   get start() { return this._start }
   get end() { return this._start + this._duration }
   get duration() { return this._duration }
-  get top() { return this.start * beatPixels + this._offset }
-  get bottom() { return this.end * beatPixels + this._offset }
-  get height() { return this.duration * beatPixels }
+  get top() { return this.start * this.store.beatPixels - this.store.currentScroll }
+  get bottom() { return this.end * this.store.beatPixels - this.store.currentScroll }
+  get height() { return this.duration * this.store.beatPixels }
+  get number() { return this._number }
 
   set start(start) {
     this._start = start
@@ -65,32 +66,21 @@ export class Note {
     this._duration = duration
   }
   set top(top) {
-    this.start = (top - this._offset) / beatPixels
+    this.height = this.bottom - top
+    this.start = (top - this.store.currentScroll) / this.store.beatPixels
   }
   set bottom(bottom) {
-    this.end = (bottom - this._offset) / beatPixels
+    this.height = bottom - this.top
+    this.end = (bottom - this.store.currentScroll) / this.store.beatPixels
   }
   set height(height) {
-    this.duration = height / beatPixels
+    this.duration = height / this.store.beatPixels
+  }
+  set number(number) {
+    this._number = number
+    this.noteName = allNotes[number % 12] + ~~(number / 12)
   }
 
-  move(offset) {
-    this._offset += offset
-  }
-  update({ start, end, top, bottom }) {
-    if (top) {
-      this.height = this.bottom - top
-      this.top = top
-    }
-    if (bottom)
-      this.height = bottom - this.top
-    if (start) {
-      this.duration = this.end - start
-      this.start = start
-    }
-    if (end)
-      this.duration = end - this.start
-  }
   resetColor() {
     this.color = noteColors[this.noteName[0]]
   }
@@ -101,6 +91,7 @@ export const useMusicStore = defineStore('music', {
     bpm: 80,
     beatsPerBar: 4,
     beatsPerWholeNote: 4,
+    beatPixels: 50,
     totalBeats: 180,
     currentBeats: 0,
     isPlaying: false,
@@ -116,25 +107,27 @@ export const useMusicStore = defineStore('music', {
     setBpm(bpm) {
       this.bpm = bpm
     },
-    step(dt = 1 / 60) {  // 60 FPS
+    step(dt) {
+      const beats = this.bps * dt
       if (this.isPlaying) {
-        this.currentBeats += this.bps * dt
+        this.currentBeats += beats
         if (this.currentBeats >= this.totalBeats) {
           if (this.isLooping) {
-            this.currentBeats = 0
+            this.currentBeats -= this.totalBeats
           } else {
             this.currentBeats = this.totalBeats
-            this.setIsPlaying(false)  // Stop playback
+            this.setIsPlaying(false)
           }
         }
       }
-      return beatPixels * this.bps * dt
+      return this.beatPixels * beats
     },
     setProgress(progress) {
       this.currentBeats = this.totalBeats * progress
+      this.notes.forEach(note => note.resetColor())
     },
     setDuration(duration) {
-      this.totalBeats = Math.ceil(duration / this.bps)
+      this.totalBeats = duration / this.bps
     },
     setIsPlaying(isPlaying) {
       this.isPlaying = isPlaying
@@ -147,9 +140,15 @@ export const useMusicStore = defineStore('music', {
       }
     },
     setKey(key) {
+      const prevKey = this.currentKey
       this.currentKey = translateNote(key.replace('m', '')) + (key.includes('m') ? 'm' : '')
       if ('cd'.includes(key[0].toLowerCase())) {
         this.baseOctave = baseOctave + 1
+      }
+      const d = allNotes.indexOf(this.currentKey[0]) - allNotes.indexOf(prevKey[0])
+      for (const note of this.notes) {  // shift the pitch of all notes
+        note.number += d
+        note.resetColor()
       }
     },
     setTimeSignature(numerator, denominator) {
@@ -161,23 +160,27 @@ export const useMusicStore = defineStore('music', {
       console.log('Adding', notes.length, 'notes')
       notes.forEach(note => this.addNote(note))
       console.log('Added', this.notes.length, 'notes')
-      this.totalBeats = Math.ceil(Math.max(...this.notes.map(note => note.end)))
+      this.totalBeats = Math.max(...this.notes.map(note => note.end))
+      this.setProgress(0)
     },
     addNote(note) {
       if (!note) return
       note = note instanceof Note ? note : new Note({
         id: note.id ?? this.notes.length,
         noteName: translateNote(note.noteName),
-        start: note.start ?? note.y / beatPixels,
-        duration: note.duration ?? note.beats / this.bps
+        start: note.start ?? note.y / this.beatPixels,
+        duration: note.duration ?? note.beats / this.bps,
+        store: this
       })
       // Find any overlapping notes with the same name
       for (const exNote of this.notes) {
         if (exNote.noteName === note.noteName) {
           if (exNote.top >= note.top - 1 && exNote.top <= note.bottom + 1) {
-            return exNote.update({ top: note.top })
+            exNote.top = note.top
+            return
           } else if (exNote.bottom <= note.bottom + 1 && exNote.bottom >= note.top - 1) {
-            return exNote.update({ bottom: note.bottom })
+            exNote.bottom = note.bottom
+            return
           }
         }
       }
@@ -261,9 +264,10 @@ export const useMusicStore = defineStore('music', {
     bps: (state) => state.bpm / 60,
     duration: (state) => state.totalBeats / state.bps,
     currentTime: (state) => state.currentBeats / state.bps,
-    barPixels: (state) => beatPixels * state.beatsPerBar,
+    barPixels: (state) => state.beatPixels * state.beatsPerBar,
     sheetPixels: (state) => state.barPixels * state.numBars,
-    scrollSpeed: (state) => beatPixels * state.bps,
+    scrollSpeed: (state) => state.beatPixels * state.bps,
+    currentScroll: (state) => state.currentBeats * state.beatPixels,
     numBars: (state) => Math.ceil(state.totalBeats / state.beatsPerBar),
     totalTime: (state) => state.totalBeats / state.bps,
     progressPercent: (state) => state.currentBeats / state.totalBeats * 100,

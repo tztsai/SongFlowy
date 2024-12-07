@@ -41,7 +41,7 @@ function isLastBar(barIndex) {
 }
 
 function getBarLyrics(notes) {
-  return notes.map(note => note.lyric || '').filter(w => w.length > 0).join(',')
+  return notes.map(note => note.lyric || '').filter(w => w.length > 0).join('|')
 }
 
 async function focusNextBar(barIndex) {
@@ -55,14 +55,15 @@ async function focusNextBar(barIndex) {
 
 function splitLyrics(value) {
   if (/[ -~]+/.test(value)) {  // ascii characters
-    return value.split(/[\s,]+/).filter(w => w.length > 0)
+    return value.split(/[\s,|]+/).filter(w => w.length > 0)
   }
-  return value.split(/[\s,]+/).filter(w => w.length > 0)
+  return value.split(/[\s,|]+/).filter(w => w.length > 0)
 }
 
 function updateBarLyrics(barIndex, value) {
   const currentBar = barNotes.value[barIndex]
   if (!currentBar) return
+  if (!/[ ,|]$/.test(value)) return
 
   const chars = splitLyrics(value)
   const maxChars = currentBar.length

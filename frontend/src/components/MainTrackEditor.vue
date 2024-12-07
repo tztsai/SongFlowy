@@ -8,9 +8,9 @@
         {{ currentVocalNote || 'No pitch detected' }}
       </div>
     </div>
-    <v-container fluid class="track-container">
+    <v-container fluid class="track-container" ref="trackContainer">
       <!-- Main Track Area -->
-      <div class="main-track-area">
+      <div class="main-track-area" @mousemove="handleDrag($event)" @mouseup="stopDragging($event)">
         <!-- Track Columns -->
         <div class="track-columns">
           <div class="hit-zone"></div>
@@ -18,23 +18,20 @@
             <div v-if="isMicActive && currentVocalPitch" class="pitch-dot" :style="pitchDotStyle"></div>
             <canvas ref="pitchTrailCanvas" class="pitch-trail" v-if="isMicActive"></canvas>
           </div>
-          <div v-for="bar in visibleBarLines" :key="'bar-' + bar.id" class="bar-line" :style="{ top: bar.y + 'px' }">
+          <div v-for="{ i, y } in barLines" :key="'bar' + i" class="bar-line" :style="{ top: y + 'px' }">
           </div>
-          <div v-for="col in cols" :key="col" class="track-column" @click="addNote($event, col)"
-            @mousemove="handleDrag($event)" @mouseup="stopDragging($event)">
-            <div v-for="note in visibleNotesInColumn(col)" :key="note.id" class="note" :style="getNoteStyle(note)"
-              @mousedown="startDragging(note, $event)" @dblclick="editNoteLyric(note)" :data-note-id="note.id">
+          <div v-for="col in cols" :key="'col' + col" class="track-column" @click="addNote($event, col)">
+            <div v-for="{ note, style } in visibleNotes[col-1]" :key="'note' + note.id" class="note"
+              :style="style" @mousedown="startDragging(note, $event)" @dblclick="editNoteLyric(note)"
+              :data-note-id="note.id">
               {{ note.lyric || note.noteName }}
             </div>
           </div>
         </div>
         <!-- Scale Notes at the Bottom -->
         <div class="scale-notes">
-          <v-chip v-for="note in columnNotes" :key="note" 
-            :color="noteColors[note[0]]"
-            :variant="isNoteInScale(note) ? 'elevated' : 'outlined'"
-            class="scale-note-chip"
-            @click="playNote(note)">
+          <v-chip v-for="note in columnNotes" :key="note" :color="noteColors[note[0]]"
+            :variant="isNoteInScale(note) ? 'elevated' : 'outlined'" class="scale-note-chip" @click="playNote(note)">
             {{ note }}
           </v-chip>
         </div>
@@ -56,14 +53,23 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, shallowRef, watchEffect } from 'vue'
+import { 
+  useElementSize, 
+  useRafFn, 
+  useThrottleFn, 
+  useEventListener,
+  computedAsync,
+  computedEager,
+  debouncedWatch,
+  throttledWatch
+} from '@vueuse/core'
 import { useMusicStore, noteColors, allNotes } from '@/stores/music'
 import { Piano } from '@/sound/piano'
 import { PitchDetector, NoteFrequencies } from '@/sound/pitch'
 import { reactive } from 'vue'
 
 const cols = ref(24)
-const barLines = ref([])
 const score = ref(0)
 const combo = ref(0)
 const instrument = new Piano()
@@ -71,16 +77,22 @@ const musicStore = useMusicStore()
 const isPlaying = computed(() => musicStore.isPlaying)
 const isMicActive = ref(false)
 const notes = computed(() => musicStore.notes)
-const currentProgress = computed(() => musicStore.progressPercent)
+const lastFrameTime = ref(null)
+const currentProgress = computedEager(() => 
+  musicStore.progressPercent, 
+  { debounce: 32 }
+)
 const pitchDetector = new PitchDetector()
 const currentVocalPitch = ref(null)
-const currentVocalNote = computed(() => pitchDetector.getClosestNote(currentVocalPitch.value))
+const currentVocalNote = computedEager(() => 
+  pitchDetector.getClosestNote(currentVocalPitch.value),
+  { debounce: 50 }  // 20fps is enough for pitch display
+)
 const lastPitchTime = ref(0)
 const pitchTimeout = ref(null)
-const barHeight = computed(() => musicStore.barPixels)
-const sheetHeight = computed(() => musicStore.sheetPixels)
-const columnWidth = computed(() => 75 / cols.value)
-const autoPlayNotes = ref(false)
+const trackContainer = ref()
+const { width: containerWidth, height: containerHeight } = useElementSize(trackContainer)
+const autoPlayNotes = ref(true)
 const hitZoneHeight = 40
 const hitZoneTop = 100
 const hitZoneBottom = hitZoneTop - hitZoneHeight
@@ -89,6 +101,18 @@ const silenceThresh = 1500 // ms of silence before considering note released
 const pitchTrailCanvas = ref(null)
 const pitchHistory = ref([])
 const pitchLifeSpan = 3000  // ms
+
+// Track which notes are currently in the hit band
+const activeHitNotes = new Map()
+
+const barLines = computedEager(() => {
+  const B = musicStore.barPixels
+  const C = containerHeight.value
+  const H = Math.ceil(C / B) * B
+  return [...Array(~~(H / B)).keys()].map(i => ({
+    i, y: ((i * B + hitLineY - musicStore.currentScroll) % H + H) % H
+  }))
+}, { debounce: 32 })  // ~30fps updates
 
 const columnNotes = computed(() => {
   const notes = []
@@ -99,43 +123,11 @@ const columnNotes = computed(() => {
 })
 
 const pitchIndicatorStyle = computed(() => {
-  if (!currentVocalPitch.value) return { opacity: 0.5 }
-  return {
+  return currentVocalPitch.value ? {
     opacity: 1,
     color: 'white'
-  }
+  } : { opacity: 0.5 }
 })
-
-// Calculate x position based on frequency
-function freqToX(freq) {
-  if (!freq) return 0
-  if (typeof freq === 'string')
-    freq = NoteFrequencies[freq]
-  const baseKey = musicStore.currentKey[0] + musicStore.baseOctave
-  const baseFreq = NoteFrequencies[baseKey]
-  const colWidth = document.querySelector('.main-track-area').offsetWidth / cols.value
-  const relativePos = Math.log2(freq / baseFreq) * 12 + 0.5
-  return Math.max(0, Math.min(cols.value, relativePos)) * colWidth
-}
-
-// Update pitch history and draw trail
-function updatePitchTrail(freq) {
-  if (!pitchTrailCanvas.value || !freq) return
-
-  const now = Date.now()
-
-  // Add new pitch to history with initial drift velocity
-  pitchHistory.value.push({ 
-    freq,
-    x: freqToX(freq),
-    time: now,
-    drift: 0,
-    velocity: 0  // Initial falling velocity
-  })
-
-  // Remove old pitches
-  pitchHistory.value = pitchHistory.value.filter(p => now - p.time < pitchLifeSpan)
-}
 
 // Compute pitch dot position and style
 const pitchDotStyle = computed(() => {
@@ -149,49 +141,36 @@ const pitchDotStyle = computed(() => {
   }
 })
 
-// Track which notes are currently in the hit band
-const activeHitNotes = new Map()
-
-let draggedNote = null
-let dragStartY = 0
-let animationFrame = null
-let isDraggingProgress = false
-
-const scrollTop = ref(0)
-const containerHeight = ref(window.innerHeight)
-
-function initBarLines() {
-  const container = document.querySelector('.track-columns')
-  if (!container) return
-  barLines.value = []
-
-  for (let i = 0; i < musicStore.numBars; i++) {
-    barLines.value.push({
-      id: i,
-      y: i * barHeight.value + hitLineY
+const visibleNotes = computedAsync(
+  async () => {
+    const res = Array(cols.value).fill(null).map(() => [])
+    notes.value.forEach(note => {
+      const top = note.top + hitLineY
+      const bottom = top + note.height
+      if (bottom >= 0 && top <= containerHeight.value) {
+        const i = columnNotes.value.indexOf(note.noteName)
+        if (i >= 0) res[i].push({
+          note,
+          style: {
+            top: `${top}px`,
+            height: `${bottom - top}px`,
+            backgroundColor: note.color
+          }
+        })
+      }
     })
-  }
-}
+    return res
+  },
+  [], // Default empty array while computing
+  { throttle: 16 }  // ~60fps updates
+)
 
-// Only show bar lines within the visible area
-const visibleBarLines = computed(() => {
-  const visibleStart = scrollTop.value - 100 // Add some buffer
-  const visibleEnd = scrollTop.value + containerHeight.value + 100
-  return barLines.value.filter(bar => 
-    bar.y >= visibleStart && bar.y <= visibleEnd
-  )
-})
+const columnWidth = computed(() => 72 / cols.value)
 
-function visibleNotesInColumn(col) {
-  const visibleStart = scrollTop.value - hitLineY - 100 // Add some buffer
-  const visibleEnd = scrollTop.value + containerHeight.value - hitLineY + 100
-  return notes.value.filter(note => {
-    if (note.noteName !== getScaleNoteForColumn(col)) return false
-    const noteTop = note.top + hitLineY
-    const noteBottom = noteTop + note.height
-    return noteBottom >= visibleStart && noteTop <= visibleEnd
-  })
-}
+var draggedNote = null
+var dragStartX = 0
+var dragStartY = 0
+var isDraggingProgress = false
 
 function getScaleNoteForColumn(col) {
   const key = musicStore.currentKey[0]
@@ -201,14 +180,6 @@ function getScaleNoteForColumn(col) {
   return note + octave
 }
 
-function getNoteStyle(note) {
-  return {
-    top: `${note.top + hitLineY}px`,
-    height: `${note.height}px`,
-    backgroundColor: note.color
-  }
-}
-
 function isNoteInScale(note) {
   const scale = musicStore.currentScale
   return scale ? scale.includes(note[0]) : false
@@ -216,7 +187,8 @@ function isNoteInScale(note) {
 
 function startDragging(note, event) {
   draggedNote = note
-  dragStartY = note.top + event.clientY
+  dragStartX = event.clientX
+  dragStartY = draggedNote.start * musicStore.beatPixels + event.clientY
   event.stopPropagation()
 }
 
@@ -229,7 +201,12 @@ function stopDragging(event) {
 
 function handleDrag(event) {
   if (!draggedNote) return
-  draggedNote.top = dragStartY - event.clientY
+  const dx = (event.clientX - dragStartX) / containerWidth.value * cols.value
+  if (Math.abs(dx) >= 1) {
+    draggedNote.number += ~~(dx)
+    dragStartX = event.clientX
+  }
+  draggedNote.start = (dragStartY - event.clientY) / musicStore.beatPixels
   event.preventDefault()
 }
 
@@ -251,151 +228,16 @@ function updateProgressFromMouseY(event) {
   const container = event.currentTarget
   const rect = container.getBoundingClientRect()
   const progress = Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height))
-  const H = sheetHeight.value
-  const delta = (currentProgress.value / 100 - progress) * H
   musicStore.setProgress(progress)
-
-  notes.value.forEach(note => {
-    note.move(delta)
-    if (note.bottom <= -hitZoneHeight) {
-      note.move(H)
-      note.resetColor()
-    } else if (note.top >= H) {
-      note.move(-H)
-    }
-  })
-  barLines.value.forEach(bar => {
-    bar.y = (bar.y + delta) % H
-  })
 }
 
 function addNote(event, col) {
   if (draggedNote) return
   const rect = event.target.getBoundingClientRect()
-  const y = rect.bottom - event.clientY - hitLineY
-  // TODO: take offset (scroll position) into account
+  const y = rect.bottom - event.clientY - hitLineY + musicStore.currentScroll
   if (y < 0) return
   const noteName = getScaleNoteForColumn(col)
   musicStore.addNote({ noteName, duration: 1, y })
-}
-
-function updateNotes() {
-  const dy = musicStore.step()
-  const dt = 1000 / 60  // Assuming 60fps
-  const gravity = 0.0001  // Gravity constant for natural falling motion
-
-  notes.value.forEach(note => {
-    const pre = note.top
-    note.move(-dy)
-    const cur = note.top
-
-    // Check if note enters hit band
-    if (pre > hitZoneHeight/2 && cur <= hitZoneHeight/2) {
-      activeHitNotes.set(note.id, note)
-    }
-
-    if (pre > 0 && cur <= 0 && autoPlayNotes.value) {
-      playNote(note.noteName, note.duration / musicStore.bps)
-    }
-
-    // Check if hit opportunity is gone
-    else if (note.bottom <= 0 && note.bottom >= -dy) {
-      if (activeHitNotes.has(note.id)) {
-        // Miss - reset combo
-        combo.value = 0
-        // Visual feedback for miss
-        note.color = 'rgba(128, 128, 128, 0.5)'
-        activeHitNotes.delete(note.id)
-      } else if (pressedKeys.has(note.noteName)) {
-        handleNoteRelease(note.noteName)
-      }
-    }
-    
-    else if (note.bottom <= -hitZoneHeight) {
-      note.move(sheetHeight.value)
-      note.resetColor()
-    }
-  })
-
-  barLines.value.forEach(bar => {
-    bar.y -= dy
-    if (bar.y / barHeight.value <= -1) {
-      bar.y += sheetHeight.value
-    }
-  })
-
-  animationFrame = requestAnimationFrame(updateNotes)
-  return
-
-  // Update pitch trail with physics
-  pitchHistory.value.forEach(p => {
-    p.velocity += gravity * dt  // Increase falling speed
-    p.drift += p.velocity * dt + dy  // Add both gravity and scroll movement
-  })
-
-  const ctx = pitchTrailCanvas.value.getContext('2d')
-  const canvas = pitchTrailCanvas.value
-  const now = Date.now()
-
-  // Update canvas size if needed
-  const parentWidth = canvas.parentElement.offsetWidth
-  const trackColumns = document.querySelector('.track-columns')
-  if (canvas.width !== parentWidth || canvas.height !== trackColumns.offsetHeight) {
-    canvas.width = parentWidth
-    canvas.height = trackColumns.offsetHeight
-  }
-
-  // Clear canvas with a slight fade effect for smoother trails
-  ctx.fillStyle = 'rgba(0, 0, 0, 0)'
-  ctx.fillRect(0, 0, canvas.width, canvas.height)
-
-  // Sort pitches by age so newer ones are drawn on top
-  const sortedPitches = [...pitchHistory.value].sort((a, b) => a.time - b.time)
-
-  // Draw trail with gradient
-  sortedPitches.forEach(pitch => {
-    const age = now - pitch.time
-    const normalizedDrift = pitch.drift / canvas.height
-    
-    // Calculate alpha based on both age and position
-    const ageAlpha = 1 - age / pitchLifeSpan
-    const driftAlpha = Math.max(0, 1 - normalizedDrift * 1.5) // Fade out as it falls
-    const alpha = Math.min(ageAlpha, driftAlpha) * 0.8  // Increased visibility
-
-    // Skip if fully transparent
-    if (alpha <= 0) return
-
-    const closestNote = pitchDetector.getClosestNote(pitch.freq)
-    const color = closestNote ? noteColors[closestNote[0]] : '#fff'
-    
-    // Calculate y position starting from 0 (hit line) and moving down
-    const y = pitch.drift
-    
-    // Skip if outside visible area (with some padding)
-    if (y < -20 || y > canvas.height + 20) return
-    
-    // Create gradient for each point with improved glow effect
-    const gradient = ctx.createRadialGradient(
-      pitch.x, y, 0,
-      pitch.x, y, 15  // Increased radius for better visibility
-    )
-    gradient.addColorStop(0, `${color}`)
-    gradient.addColorStop(0.5, `${color}88`)  // Semi-transparent middle
-    gradient.addColorStop(1, `${color}00`)
-    
-    ctx.fillStyle = gradient
-    ctx.globalAlpha = alpha
-    ctx.beginPath()
-    ctx.arc(pitch.x, y, 15, 0, Math.PI * 2)
-    ctx.fill()
-
-    // Add a small core for better visibility
-    ctx.beginPath()
-    ctx.arc(pitch.x, y, 5, 0, Math.PI * 2)
-    ctx.fillStyle = color
-    ctx.fill()
-  })
-  ctx.globalAlpha = 1
 }
 
 function editNoteLyric(note) {
@@ -448,7 +290,7 @@ function handleNoteHit(note, noteEl, key) {
 
   // Calculate accuracy
   const startPenalty = note.top / hitZoneHeight
-  
+
   // Track the note
   pressedKeys.set(key, {
     note,
@@ -480,13 +322,13 @@ function calculatePoints(startPenalty, actualDuration, expectedDuration, isVocal
   let durationPenalty
   if (isVocal) {
     startPenalty = Math.max(0, -startPenalty)  // no penalty for early start
-    durationPenalty = Math.max(0, -p) * 0.6  // no penalty for overduration
+    durationPenalty = Math.abs(p) * 0.2
   } else {
     startPenalty = Math.abs(startPenalty)
     durationPenalty = Math.abs(p) * 0.8
   }
   console.log("Penalties:", startPenalty, durationPenalty)
-  return (1 - Math.max(startPenalty, durationPenalty)) * 10
+  return (1 - (startPenalty + durationPenalty) / 2) * 10
 }
 
 function updateScoreAndVisuals(points, noteObj, noteEl) {
@@ -508,7 +350,7 @@ function showScorePopup(points, noteEl) {
   popup.textContent = `+${Math.round(points)}`
   popup.style.left = `${noteEl.offsetLeft}px`
   popup.style.bottom = `${noteEl.offsetBottom}px`
-  
+
   noteEl.parentElement.appendChild(popup)
   popup.addEventListener('animationend', () => popup.remove())
 }
@@ -530,7 +372,18 @@ async function toggleMicrophone() {
   }
 }
 
-function handlePitchDetection({freq, db}) {
+function freqToX(freq) {
+  if (!freq) return 0
+  if (typeof freq === 'string')
+    freq = NoteFrequencies[freq]
+  const baseKey = musicStore.currentKey[0] + musicStore.baseOctave
+  const baseFreq = NoteFrequencies[baseKey]
+  const colWidth = document.querySelector('.main-track-area').offsetWidth / cols.value
+  const relativePos = Math.log2(freq / baseFreq) * 12 + 0.5
+  return Math.max(0, Math.min(cols.value, relativePos)) * colWidth
+}
+
+function handlePitchDetection({ freq, db }) {
   const prevKey = currentVocalNote.value
 
   if (!freq) {
@@ -573,7 +426,7 @@ const pressedKeys = reactive(new Map()) // key -> { note, startTime }
 const handleKeyDown = async (event) => {
   // Ignore if target is an input or textarea
   if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA') return
-  
+
   if (event.repeat) return // Prevent key repeat
 
   // Handle keyboard shortcuts for note delay
@@ -616,7 +469,7 @@ const handleKeyDown = async (event) => {
 const handleKeyUp = async (event) => {
   // Ignore if target is an input or textarea
   if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA') return
-  
+
   const key = event.key.toLowerCase()
   if (!keyboardChars.includes(key)) return
 
@@ -627,39 +480,68 @@ const handleKeyUp = async (event) => {
 // Watch for play state changes
 watch(isPlaying, (playing) => {
   if (playing) {
-    updateNotes()
-  } else if (animationFrame) {
-    cancelAnimationFrame(animationFrame)
+    resumeAnimation()
+  } else {
+    pauseAnimation()
   }
 })
 
+const { pause: pauseAnimation, resume: resumeAnimation } = useRafFn(() => {
+  const now = performance.now() / 1000
+  const dy = musicStore.step(lastFrameTime.value ? now - lastFrameTime.value : 1 / 60)
+  lastFrameTime.value = now
+
+  for (const notes of visibleNotes.value) {
+    for (const { note } of notes) {
+      const y1 = note.top
+      const y2 = y1 - hitZoneHeight / 2
+      const y3 = y1 + note.height
+
+      // Check if note is entering the hit zone
+      if (y2 > -dy && y2 <= 0) {
+        activeHitNotes.set(note.id, note)
+      }
+
+      // Check if note is hitting the central line
+      else if (y1 > -dy && y1 <= 0 && autoPlayNotes.value) {
+        playNote(note.noteName, note.duration / musicStore.bps)
+      }
+
+      // Check if note is leaving the hit zone
+      else if (y3 > -dy && y3 <= 0) {
+        if (activeHitNotes.has(note.id)) {
+          combo.value = 0
+          note.color = 'rgba(128, 128, 128, 0.5)'  // gray
+          activeHitNotes.delete(note.id)
+        } else if (pressedKeys.has(note.noteName)) {
+          handleNoteRelease(note.noteName)
+        }
+      }
+    }
+  }
+}, { immediate: false })
+
+useEventListener(window, 'resize', useThrottleFn(() => {
+  if (trackContainer.value) {
+    containerWidth.value = trackContainer.value.offsetWidth
+    containerHeight.value = trackContainer.value.offsetHeight
+  }
+}, 100))
+
 onMounted(() => {
-  initBarLines()
   window.addEventListener('keydown', handleKeyDown)
   window.addEventListener('keyup', handleKeyUp)
-  const container = document.querySelector('.track-container')
-  if (container) {
-    const observer = new ResizeObserver((entries) => {
-      containerHeight.value = entries[0].contentRect.height
-    })
-    observer.observe(container)
-    
-    container.addEventListener('scroll', () => {
-      scrollTop.value = container.scrollTop
-    })
-  }
+  new ResizeObserver((entries) => {
+    containerHeight.value = entries[0].contentRect.height
+  }).observe(document.querySelector('.track-columns'))
+  resumeAnimation()
 })
 
 onUnmounted(() => {
-  if (animationFrame) {
-    cancelAnimationFrame(animationFrame)
-  }
-  if (isMicActive.value) {
-    pitchDetector.stop()
-  }
+  pauseAnimation()
+  if (isMicActive.value) pitchDetector.stop()
   window.removeEventListener('keydown', handleKeyDown)
   window.removeEventListener('keyup', handleKeyUp)
-  pitchHistory.value = []
 })
 </script>
 
@@ -779,7 +661,7 @@ onUnmounted(() => {
   position: absolute;
   width: 16px;
   height: 16px;
-  background: radial-gradient(circle, #fff 0%, rgba(255,255,255,0.3) 70%, transparent 100%);
+  background: radial-gradient(circle, #fff 0%, rgba(255, 255, 255, 0.3) 70%, transparent 100%);
   border-radius: 50%;
   z-index: 4;
   transition: all 0.2s ease-out;
@@ -791,7 +673,8 @@ onUnmounted(() => {
   width: 100%;
   pointer-events: none;
   z-index: 3;
-  transform: scaleY(-1);  /* Flip the canvas to match note direction */
+  transform: scaleY(-1);
+  /* Flip the canvas to match note direction */
 }
 
 .controls {
@@ -887,6 +770,7 @@ onUnmounted(() => {
     opacity: 1;
     transform: translate(0%, 100%) scaleY(-1);
   }
+
   100% {
     opacity: 0;
     transform: translate(0%, 300%) scaleY(-1);

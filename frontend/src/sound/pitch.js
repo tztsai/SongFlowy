@@ -202,7 +202,7 @@ const PitchAnalyzer = (function () {
     MAX_FREQ: 1200,
 
     sampleRate: 44100,
-    step: 300,
+    step: 200,
     oldFreq: 0.0,
 
     peak: 0.0,
@@ -507,9 +507,9 @@ export class PitchDetector {
     this.onPitch = null;
     this.pitchAnalyzer = null;
     this.lastValidPitch = null;
-    this.confidenceThreshold = -50;
+    this.confidenceThreshold = -60;
     this.freqBuffer = [];
-    this.freqBufferSize = 3;
+    this.freqBufferSize = 4;
   }
 
   async start(callback) {
