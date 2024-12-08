@@ -1,6 +1,5 @@
 import { defineStore } from 'pinia'
 
-export const baseOctave = 2
 export const allNotes = ['C', 'd', 'D', 'e', 'E', 'F', 'g', 'G', 'a', 'A', 'b', 'B']
 
 const scaleMap = {
@@ -84,10 +83,21 @@ export class Note {
   resetColor() {
     this.color = noteColors[this.noteName[0]]
   }
+
+  toJSON() {
+    return {
+      id: this.id,
+      noteName: this.noteName,
+      lyric: this.lyric,
+      start: this.start,
+      duration: this.duration,
+    }
+  }
 }
 
 export const useMusicStore = defineStore('music', {
   state: () => ({
+    title: '',
     bpm: 80,
     beatsPerBar: 4,
     beatsPerWholeNote: 4,
@@ -97,12 +107,15 @@ export const useMusicStore = defineStore('music', {
     isPlaying: false,
     isLooping: false,
     currentKey: 'G',
-    baseOctave: baseOctave,
+    baseOctave: 2,
     notes: [],
     bgm: null,
   }),
 
   actions: {
+    setTitle(title) {
+      this.title = title
+    },
     setBpm(bpm) {
       this.bpm = bpm
     },
@@ -138,16 +151,21 @@ export const useMusicStore = defineStore('music', {
         this.bgm.pause()
       }
     },
-    setKey(key) {
-      const prevKey = this.currentKey
+    setKey(key, update_notes = false) {
+      const c = allNotes.indexOf(this.currentKey[0])
       this.currentKey = translateNote(key.replace('m', '')) + (key.includes('m') ? 'm' : '')
-      if ('cd'.includes(key[0].toLowerCase())) {
-        this.baseOctave = baseOctave + 1
-      }
-      const d = allNotes.indexOf(this.currentKey[0]) - allNotes.indexOf(prevKey[0])
+      if (!update_notes) return
+      const d = allNotes.indexOf(this.currentKey[0]) - c
       for (const note of this.notes) {  // shift the pitch of all notes
         note.number += d
-        note.resetColor()
+      }
+    },
+    setOctave(octave, update_notes = false) {
+      const d = octave - this.baseOctave
+      this.baseOctave = octave
+      if (!update_notes) return
+      for (const note of this.notes) {  // shift the pitch of all notes
+        note.number += 12 * d
       }
     },
     setTimeSignature(numerator, denominator) {
@@ -174,10 +192,10 @@ export const useMusicStore = defineStore('music', {
       // Find any overlapping notes with the same name
       for (const exNote of this.notes) {
         if (exNote.noteName === note.noteName) {
-          if (exNote.top >= note.top - 1 && exNote.top <= note.bottom + 1) {
+          if (exNote.top >= note.top && exNote.top <= note.bottom) {
             exNote.top = note.top
             return
-          } else if (exNote.bottom <= note.bottom + 1 && exNote.bottom >= note.top - 1) {
+          } else if (exNote.bottom <= note.bottom && exNote.bottom >= note.top) {
             exNote.bottom = note.bottom
             return
           }
@@ -206,12 +224,74 @@ export const useMusicStore = defineStore('music', {
         this.notes.splice(index, 1)
       }
     },
-    addDelay(beats) {
+    shiftBeats(beats) {
       this.notes.forEach(note => note.start += beats)
+    },
+    shiftPitch(interval) {
+      this.notes.forEach(note => note.number += interval)
     },
     setNoteLyric(noteId, lyric) {
       const note = this.notes.find(n => n.id === noteId)
       if (note) note.lyric = lyric
+    },
+    async saveBGMToStorage(url) {
+      try {
+        const response = await fetch(url)
+        const blob = await response.blob()
+        const reader = new FileReader()
+        
+        return new Promise((resolve) => {
+          reader.onloadend = () => {
+            localStorage.setItem('currentBGM', reader.result)
+            resolve(reader.result)
+          }
+          reader.readAsDataURL(blob)
+        })
+      } catch (error) {
+        console.error('Error saving BGM to storage:', error)
+      }
+    },
+    saveTrack() {
+      const trackData = {
+        title: this.title,
+        notes: this.notes.map(note => note.toJSON()),
+        key: this.currentKey,
+        bpm: this.bpm,
+        timeSignature: [this.beatsPerBar, this.beatsPerWholeNote],
+        bgmData: localStorage.getItem('currentBGM'),
+        savedAt: new Date().toISOString()
+      }
+      
+      const savedTracks = this.getRecentTracks()
+      savedTracks.unshift(trackData)
+      if (savedTracks.length > 10) savedTracks.pop()
+
+      localStorage.setItem('recentTracks', JSON.stringify(savedTracks))
+    },
+    loadTrack(data) {
+      // Reconstruct notes with proper structure
+      this.setTitle(data.title)
+      this.setNotes(data.notes.map(n => new Note({ ...n, store: this })))
+      this.setKey(data.key)
+      this.setBpm(data.bpm)
+      this.setTimeSignature(...data.timeSignature)
+      
+      if (data.bgmData) {
+        this.setBGMPath(this.getBlobURL(data.bgmData))
+      }
+    },
+    getBlobURL(dataURL) {
+      const [header, data] = dataURL.split(',')
+      const mime = header.split(':')[1].split(';')[0]
+      const bytes = atob(data)
+      const array = new Uint8Array(bytes.length)
+      
+      for (let i = 0; i < bytes.length; i++) {
+        array[i] = bytes.charCodeAt(i)
+      }
+      
+      const blob = new Blob([array], { type: mime })
+      return URL.createObjectURL(blob)
     },
     setBGMPath(path) {
       // Stop any existing BGM
@@ -238,7 +318,10 @@ export const useMusicStore = defineStore('music', {
       audio.addEventListener('error', (e) => {
         console.error('Error loading BGM:', e)
       })
-    }
+    },
+    getRecentTracks() {
+      return JSON.parse(localStorage.getItem('recentTracks') || '[]')
+    },
   },
 
   getters: {

@@ -45,7 +45,7 @@ class Piano {
         "A7": "A7.mp3",
         "C8": "C8.mp3"
       },
-      baseUrl: "/public/audio/Salamander/",
+      baseUrl: "audio/Salamander/",
       onload: () => {
         console.log("Piano samples loaded!")
       }

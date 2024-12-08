@@ -91,6 +91,7 @@ const currentVocalNote = computedEager(() =>
 const lastPitchTime = ref(0)
 const pitchTimeout = ref(null)
 const trackContainer = ref()
+const columnShift = ref(0)
 const { width: containerWidth, height: containerHeight } = useElementSize(trackContainer)
 const autoPlayNotes = ref(true)
 const hitZoneHeight = 40
@@ -174,9 +175,9 @@ var isDraggingProgress = false
 
 function getScaleNoteForColumn(col) {
   const key = musicStore.currentKey[0]
-  const ki = allNotes.indexOf(key)
-  const note = allNotes[(col + ki - 1) % 12]
-  const octave = musicStore.baseOctave + Math.floor((col + ki - 1) / 12)
+  const i = col + allNotes.indexOf(key) + columnShift.value - 1
+  const note = allNotes[(i % 12 + 12) % 12]
+  const octave = musicStore.baseOctave + Math.floor(i / 12)
   return note + octave
 }
 
@@ -422,7 +423,7 @@ function freqToX(freq) {
   if (!freq) return 0
   if (typeof freq === 'string')
     freq = NoteFrequencies[freq]
-  const baseKey = musicStore.currentKey[0] + musicStore.baseOctave
+  const baseKey = getScaleNoteForColumn(1)
   const baseFreq = NoteFrequencies[baseKey]
   const colWidth = document.querySelector('.main-track-area').offsetWidth / cols.value
   const relativePos = Math.log2(freq / baseFreq) * 12 + 0.5
@@ -477,9 +478,13 @@ const handleKeyDown = async (event) => {
 
   // Handle keyboard shortcuts for note delay
   if (event.key === 'ArrowUp') {
-    return musicStore.addDelay(1)
+    musicStore.currentBeats -= 1
   } else if (event.key === 'ArrowDown') {
-    return musicStore.addDelay(-1)
+    musicStore.currentBeats += 1
+  } else if (event.key === 'ArrowLeft') {
+    columnShift.value -= 1
+  } else if (event.key === 'ArrowRight') {
+    columnShift.value += 1
   }
 
   const key = event.key.toLowerCase()

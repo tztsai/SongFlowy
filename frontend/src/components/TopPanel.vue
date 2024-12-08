@@ -12,9 +12,13 @@
           <v-btn :color="isPlaying ? 'error' : 'success'" @click="togglePlay"
             :icon="isPlaying ? 'mdi-pause' : 'mdi-play'" size="small" />
         </v-col>
-        <v-col cols="2">
+        <v-col cols="1">
           <v-select v-model="currentKey" :items="keySignatures" label="Key" density="compact" hide-details
-            style="max-width: 80px;" @update:modelValue="updateKey" />
+            style="min-width: 90px;" @update:modelValue="updateKey" />
+        </v-col>
+        <v-col cols="1">
+          <v-select v-model="baseOctave" :items="[0,1,2,3,4,5]" label="Octave" density="compact" hide-details
+            style="min-width: 90px;" @update:modelValue="updateBaseOctave" />
         </v-col>
         <v-col cols="3">
           <v-slider v-model="bpm" :min="30" :max="180" style="max-width: 200px;" density="compact" hide-details>
@@ -52,6 +56,30 @@
             @change="handleFileUpload('combined')">
           <div v-if="uploadError" class="text-red">{{ uploadError }}</div>
         </v-col>
+        <v-col cols="auto">
+          <v-menu>
+            <template v-slot:activator="{ props }">
+              <v-btn color="secondary" prepend-icon="mdi-history" size="large" v-bind="props" class="ml-2">
+                Recent
+              </v-btn>
+            </template>
+            <v-list>
+              <template v-if="recentTracks.length > 0">
+                <v-list-item v-for="(track, index) in recentTracks" :key="index" @click="loadRecentTrack(track)">
+                  <v-list-item-title>
+                    {{ formatTrackName(track) }}
+                  </v-list-item-title>
+                  <v-list-item-subtitle>
+                    {{ formatDate(track.savedAt) }}
+                  </v-list-item-subtitle>
+                </v-list-item>
+              </template>
+              <v-list-item v-else>
+                <v-list-item-title class="text-subtitle-2">No recent tracks</v-list-item-title>
+              </v-list-item>
+            </v-list>
+          </v-menu>
+        </v-col>
       </v-row>
     </v-container>
   </v-card>
@@ -76,13 +104,22 @@ const keySignatures = [
 ]
 
 const currentKey = computed({
-  get: () => musicStore.currentKey,
-  set: (value) => musicStore.setKey(value)
+  get() {
+    return musicStore.currentKey
+  },
+  set(value) {
+    updateKey(value)
+  }
 })
 
-function updateKey(value) {
-  musicStore.setKey(value)
-}
+const baseOctave = computed({
+  get() {
+    return musicStore.baseOctave
+  },
+  set(value) {
+    updateOctave(value)
+  }
+})
 
 const bpm = computed({
   get: () => musicStore.bpm,
@@ -149,16 +186,24 @@ async function handleFileUpload(type) {
       const vocalData = await apiClient.post('/api/sheet', form2)
 
       // TODO: transcribe the vocal track and set lyrics
+      musicStore.setTitle(vocalPath.split('/').pop().split('.')[0])
       musicStore.setBpm(vocalData.tempo)
       musicStore.setKey(vocalData.key)
       musicStore.setTimeSignature(...vocalData.time_signature)
       musicStore.setNotes(vocalData.notes)
+      musicStore.setOctave(Math.min(...musicStore.notes.map(
+        note => parseInt(note.noteName[1]))))
     }
     if (bgmPath) {
       console.log('BGM path:', bgmPath)
       const { url } = await apiClient.get(`/${bgmPath}`)
+      await musicStore.saveBGMToStorage(url)
       musicStore.setBGMPath(url)
     }
+
+    musicStore.saveTrack()
+    loadRecentTracks()  // Refresh the list
+
   } catch (error) {
     console.error('Upload error:', error)
     uploadError.value = error.message
@@ -169,8 +214,7 @@ async function handleFileUpload(type) {
 }
 
 const handleSpacePress = (e) => {
-  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return
-  if (e.code === 'Space') {
+  if (e.code === 'Space' && !e.repeat && !e.target.matches('input, textarea')) {
     e.preventDefault()
     togglePlay()
   }
@@ -178,9 +222,42 @@ const handleSpacePress = (e) => {
 
 window.addEventListener('keydown', handleSpacePress)
 
+const recentTracks = ref([])
+
+const loadRecentTracks = () => {
+  recentTracks.value = musicStore.getRecentTracks()
+}
+
+const loadRecentTrack = (track) => {
+  musicStore.loadTrack(track)
+}
+
+const formatTrackName = (track) => {
+  return `${track.title} - ${track.bpm} BPM`
+}
+
+const formatDate = (dateStr) => {
+  const date = new Date(dateStr)
+  return date.toLocaleDateString() + ' ' + date.toLocaleTimeString()
+}
+
+function updateOctave(value) {
+  musicStore.setOctave(value, true)
+}
+
+function updateKey(value) {
+  musicStore.setKey(value, true)
+}
+
+// Load recent tracks when component mounts
+onMounted(() => {
+  loadRecentTracks()
+})
+
 onUnmounted(() => {
   window.removeEventListener('keydown', handleSpacePress)
 })
+
 </script>
 
 <style scoped>
