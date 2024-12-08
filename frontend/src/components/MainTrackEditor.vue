@@ -234,37 +234,83 @@ function updateProgressFromMouseY(event) {
 function addNote(event, col) {
   if (draggedNote) return
   const rect = event.target.getBoundingClientRect()
-  const y = rect.bottom - event.clientY - hitLineY + musicStore.currentScroll
-  if (y < 0) return
+  const start = (rect.bottom - event.clientY - hitLineY + musicStore.currentScroll) / musicStore.beatPixels
+  if (start < 0) return
   const noteName = getScaleNoteForColumn(col)
-  musicStore.addNote({ noteName, duration: 1, y })
+  musicStore.addNote({ noteName, duration: 1, start })
 }
+
+// falling notes animation
+const { pause: pauseAnimation, resume: resumeAnimation } = useRafFn(() => {
+  const now = performance.now() / 1000
+  const dy = musicStore.step(lastFrameTime.value ? now - lastFrameTime.value : 1 / 60)
+  lastFrameTime.value = now
+
+  for (const notes of visibleNotes.value) {
+    for (const { note } of notes) {
+      const y1 = note.top
+      const y2 = y1 - hitZoneHeight / 2
+      const y3 = y1 + note.height
+
+      // Check if note is entering the hit zone
+      if (y2 > -dy && y2 <= 0) {
+        activeHitNotes.set(note.id, note)
+      }
+
+      // Check if note is hitting the central line
+      else if (y1 > -dy && y1 <= 0 && autoPlayNotes.value) {
+        playNote(note.noteName, note.duration / musicStore.bps)
+      }
+
+      // Check if note is leaving the hit zone
+      else if (y3 > -dy && y3 <= 0) {
+        if (activeHitNotes.has(note.id)) {
+          combo.value = 0
+          note.color = 'rgba(128, 128, 128, 0.5)'  // gray
+          activeHitNotes.delete(note.id)
+        } else if (pressedKeys.has(note.noteName)) {
+          handleNoteRelease(note.noteName)
+        }
+      }
+    }
+  }
+}, { immediate: false })
 
 function editNoteLyric(note) {
   const noteEl = document.querySelector(`[data-note-id="${note.id}"]`)
   noteEl.contentEditable = true
-  noteEl.textContent = ''
   noteEl.focus()
+  
+  const range = document.createRange();
+  range.selectNodeContents(noteEl);
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
 
-  const saveLyric = () => {
-    for (const note of musicStore.notes) {
-      if (note.id === noteEl.dataset.noteId) {
-        note.lyric = noteEl.textContent.trim()
-        noteEl.textContent = note.lyric
-      }
-    }
+  const saveEdit = () => {
+    const lyric = noteEl.textContent.trim()
     noteEl.contentEditable = false
-    musicStore.updateLyrics()
+    musicStore.setNoteLyric(note.id, lyric)
+    window.dispatchEvent(new CustomEvent('note-lyric-changed'))
   }
-  const handleKeyDown = (event) => {
-    if (event.key === 'Enter') {
-      event.preventDefault()
-      saveLyric()
-      window.removeEventListener('keydown', handleKeyDown)
+
+  const handleBlur = () => {
+    saveEdit()
+    noteEl.removeEventListener('blur', handleBlur)
+    noteEl.removeEventListener('keydown', handleKeyDown)
+  }
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' || e.key === 'Tab') {
+      e.preventDefault()
+      saveEdit()
+      noteEl.removeEventListener('blur', handleBlur)
+      noteEl.removeEventListener('keydown', handleKeyDown)
     }
   }
-  window.addEventListener('keydown', handleKeyDown)
-  noteEl.addEventListener('blur', saveLyric)
+
+  noteEl.addEventListener('blur', handleBlur)
+  noteEl.addEventListener('keydown', handleKeyDown)
 }
 
 function playNote(note, duration = 0.1) {
@@ -425,7 +471,7 @@ const pressedKeys = reactive(new Map()) // key -> { note, startTime }
 
 const handleKeyDown = async (event) => {
   // Ignore if target is an input or textarea
-  if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA') return
+  if (['INPUT', 'TEXTAREA', 'DIV'].includes(event.target.tagName)) return
 
   if (event.repeat) return // Prevent key repeat
 
@@ -483,43 +529,9 @@ watch(isPlaying, (playing) => {
     resumeAnimation()
   } else {
     pauseAnimation()
+    lastFrameTime.value = null
   }
 })
-
-const { pause: pauseAnimation, resume: resumeAnimation } = useRafFn(() => {
-  const now = performance.now() / 1000
-  const dy = musicStore.step(lastFrameTime.value ? now - lastFrameTime.value : 1 / 60)
-  lastFrameTime.value = now
-
-  for (const notes of visibleNotes.value) {
-    for (const { note } of notes) {
-      const y1 = note.top
-      const y2 = y1 - hitZoneHeight / 2
-      const y3 = y1 + note.height
-
-      // Check if note is entering the hit zone
-      if (y2 > -dy && y2 <= 0) {
-        activeHitNotes.set(note.id, note)
-      }
-
-      // Check if note is hitting the central line
-      else if (y1 > -dy && y1 <= 0 && autoPlayNotes.value) {
-        playNote(note.noteName, note.duration / musicStore.bps)
-      }
-
-      // Check if note is leaving the hit zone
-      else if (y3 > -dy && y3 <= 0) {
-        if (activeHitNotes.has(note.id)) {
-          combo.value = 0
-          note.color = 'rgba(128, 128, 128, 0.5)'  // gray
-          activeHitNotes.delete(note.id)
-        } else if (pressedKeys.has(note.noteName)) {
-          handleNoteRelease(note.noteName)
-        }
-      }
-    }
-  }
-}, { immediate: false })
 
 useEventListener(window, 'resize', useThrottleFn(() => {
   if (trackContainer.value) {

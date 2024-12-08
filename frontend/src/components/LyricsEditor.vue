@@ -3,120 +3,100 @@
     <div v-for="(bar, barIndex) in barNotes" :key="barIndex" class="bar-input">
       <v-text-field
         :ref="el => textFieldRefs[barIndex] = el"
-        :model-value="getBarLyrics(bar)"
-        @update:model-value="value => updateBarLyrics(barIndex, value)"
+        v-model="barValues[barIndex]"
+        @keydown.enter="commitBarLyrics(barIndex)"
+        @blur="commitBarLyrics(barIndex)"
         :placeholder="'Bar ' + (barIndex + 1)"
         hide-details
         density="compact"
         variant="outlined"
         bg-color="rgba(0, 0, 0, 0.2)"
-        :maxlength="isLastBar(barIndex) ? bar.length : undefined"
       />
     </div>
   </div>
 </template>
 
 <script setup>
-import { computed, ref, nextTick } from 'vue'
+import { computed, ref, nextTick, onMounted, onUnmounted } from 'vue'
 import { useMusicStore } from '@/stores/music'
 
 const musicStore = useMusicStore()
 const textFieldRefs = ref({})
+const barValues = ref({})  // Only used while editing
 
 const barNotes = computed(() => {
-  // Group notes by bars
-  const bars = {}
-  musicStore.notes.forEach(note => {
-    const barIndex = Math.floor(note.start / musicStore.beatsPerBar)
-    if (!bars[barIndex]) bars[barIndex] = []
-    bars[barIndex].push(note)
-  })
-
-  // Convert to array maintaining bar order
-  return Object.keys(bars).map(barIndex => bars[barIndex])
+  const bars = musicStore.barNotes
+  const sortedKeys = Object.keys(bars).sort((a, b) => a - b)
+  return sortedKeys.map(key => bars[key])
 })
 
-function isLastBar(barIndex) {
-  return barIndex === barNotes.value.length - 1
-}
-
-function getBarLyrics(notes) {
-  return notes.map(note => note.lyric || '').filter(w => w.length > 0).join('|')
-}
-
-async function focusNextBar(barIndex) {
-  await nextTick()
-  const nextField = textFieldRefs.value[barIndex + 1]?.$el.querySelector('input')
-  if (nextField) {
-    nextField.focus()
-    nextField.setSelectionRange(1, 1)
-  }
+// Watch for changes in note lyrics when not editing
+const updateBarValues = () => {
+  barNotes.value.forEach((bar, index) => {
+    barValues.value[index] = bar.map(note => note.lyric).filter(w => w.length > 0).join(' ')
+  })
 }
 
 function splitLyrics(value) {
   if (/[ -~]+/.test(value)) {  // ascii characters
-    return value.split(/[\s,|]+/).filter(w => w.length > 0)
+    return value.split(/[\s,.?!]+/).filter(w => w.length > 0)
   }
-  return value.split(/[\s,|]+/).filter(w => w.length > 0)
+  return value.split(/[\s,.?!，。？！|]+/).filter(w => w.length > 0)
 }
 
-function updateBarLyrics(barIndex, value) {
+function commitBarLyrics(barIndex) {
   const currentBar = barNotes.value[barIndex]
-  if (!currentBar) return
-  if (!/[ ,|]$/.test(value)) return
+  const value = barValues.value[barIndex]
+  if (!currentBar || !value) return
 
-  const chars = splitLyrics(value)
-  const maxChars = currentBar.length
-  
-  // If we're in the last bar, just update normally and return
-  // if (isLastBar(barIndex)) {
-  //   currentBar.forEach((note, index) => {
-  //     if (note && index < maxChars) {
-  //       musicStore.setNoteLyric(note.id, chars[index] || '')
-  //     }
-  //   })
-  //   return value.slice(0, maxChars)
-  // }
-  
-  // If we have more characters than notes in current bar
-  if (false && chars.length > maxChars) {
-    // Update current bar
-    currentBar.forEach((note, index) => {
-      if (note) {
-        musicStore.setNoteLyric(note.id, chars[index] || '')
+  const words = splitLyrics(value)
+  let currentIndex = barIndex
+  let currentWords = [...words]
+
+  while (currentWords.length > 0 && currentIndex < barNotes.value.length) {
+    const bar = barNotes.value[currentIndex]
+    const wordsForBar = currentWords.slice(0, bar.length)
+    
+    // Update lyrics for current bar
+    bar.forEach((note, i) => {
+      if (i < wordsForBar.length) {
+        musicStore.setNoteLyric(note.id, wordsForBar[i])
+      } else {
+        musicStore.setNoteLyric(note.id, '')  // Clear any leftover lyrics
       }
     })
-    
-    // Get overflow characters
-    const overflow = chars.slice(maxChars)
-    
-    // Update next bar if it exists
-    const nextBar = barNotes.value[barIndex + 1]
-    if (nextBar) {
-      const nextBarCurrentLyrics = getBarLyrics(nextBar).split('')
-      const combinedLyrics = [...overflow, ...nextBarCurrentLyrics]
-      
-      nextBar.forEach((note, index) => {
-        if (note) {
-          musicStore.setNoteLyric(note.id, combinedLyrics[index] || '')
-        }
-      })
-      
-      // Focus next bar
-      focusNextBar(barIndex)
-    }
-    
-    // Trim the value to max length for current bar
-    return chars.slice(0, maxChars).join(' ')
-  } else {
-    // Normal update for current bar
-    currentBar.forEach((note, index) => {
-      if (note) {
-        musicStore.setNoteLyric(note.id, chars[index] || '')
-      }
-    })
+
+    // Move to next bar
+    currentWords = currentWords.slice(bar.length)
+    currentIndex++
+  }
+
+  updateBarValues()
+
+  // Focus the next bar
+  console.log(currentIndex, barNotes.value.length)
+  if (currentIndex < barNotes.value.length) {
+    focusOnBar(currentIndex)
   }
 }
+
+async function focusOnBar(barIndex) {
+  await nextTick()
+  const nextField = textFieldRefs.value[barIndex]?.$el.querySelector('input')
+  if (nextField) nextField.focus()
+}
+
+onMounted(() => {
+  addEventListener('note-lyric-changed', () => {
+    updateBarValues()
+  })
+})
+
+onUnmounted(() => {
+  removeEventListener('note-lyric-changed', () => {
+    updateBarValues()
+  })
+})
 </script>
 
 <style scoped>

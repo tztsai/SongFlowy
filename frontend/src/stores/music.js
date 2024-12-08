@@ -30,7 +30,7 @@ const scaleMap = {
   'bm': ['b', 'C', 'd', 'e', 'F', 'g', 'a'],
 }
 
-export const noteColors = {'G': '#FF0000', 'g': '#FF8000', 'F': '#FFD700', 'E': '#00FF00', 'e': '#00FFAA', 'D': '#00FFFF', 'd': '#0084FF', 'C': '#0000FF', 'B': '#8000FF', 'b': '#FF00FF', 'A': '#FF0080', 'a': '#FF4040'}
+export const noteColors = { 'G': '#FF0000', 'g': '#FF8000', 'F': '#FFD700', 'E': '#00FF00', 'e': '#00FFAA', 'D': '#00FFFF', 'd': '#0084FF', 'C': '#0000FF', 'B': '#8000FF', 'b': '#FF00FF', 'A': '#FF0080', 'a': '#FF4040' }
 
 // Note prototype for consistent note creation
 export class Note {
@@ -67,11 +67,11 @@ export class Note {
   }
   set top(top) {
     this.height = this.bottom - top
-    this.start = (top - this.store.currentScroll) / this.store.beatPixels
+    this.start = (top + this.store.currentScroll) / this.store.beatPixels
   }
   set bottom(bottom) {
     this.height = bottom - this.top
-    this.end = (bottom - this.store.currentScroll) / this.store.beatPixels
+    this.end = (bottom + this.store.currentScroll) / this.store.beatPixels
   }
   set height(height) {
     this.duration = height / this.store.beatPixels
@@ -99,7 +99,6 @@ export const useMusicStore = defineStore('music', {
     currentKey: 'G',
     baseOctave: baseOctave,
     notes: [],
-    lyrics: '',  // Add lyrics property
     bgm: null,
   }),
 
@@ -168,7 +167,7 @@ export const useMusicStore = defineStore('music', {
       note = note instanceof Note ? note : new Note({
         id: note.id ?? this.notes.length,
         noteName: translateNote(note.noteName),
-        start: note.start ?? note.y / this.beatPixels,
+        start: note.start,
         duration: note.duration ?? note.beats / this.bps,
         store: this
       })
@@ -212,25 +211,7 @@ export const useMusicStore = defineStore('music', {
     },
     setNoteLyric(noteId, lyric) {
       const note = this.notes.find(n => n.id === noteId)
-      if (note) {
-        note.lyric = lyric
-        // Update lyrics string
-        this.updateLyrics()
-      }
-    },
-    updateLyrics() {
-      // Group notes by bars
-      const notesPerBar = this.notes.reduce((acc, note) => {
-        const barIndex = Math.floor(note.start / this.beatsPerBar)
-        if (!acc[barIndex]) acc[barIndex] = []
-        acc[barIndex].push(note)
-        return acc
-      }, {})
-
-      // Sort notes within each bar and create lyrics string
-      this.lyrics = Object.values(notesPerBar)
-        .map(barNotes => barNotes.map(note => note.lyric || '_').join(''))
-        .join(' ')
+      if (note) note.lyric = lyric
     },
     setBGMPath(path) {
       // Stop any existing BGM
@@ -247,7 +228,7 @@ export const useMusicStore = defineStore('music', {
       this.bgm = audio;
       audio.src = path;
       audio.preload = 'auto';
-      
+
       // Set up event listeners
       audio.addEventListener('loadedmetadata', () => {
         console.log('BGM loaded, duration:', audio.duration)
@@ -273,6 +254,11 @@ export const useMusicStore = defineStore('music', {
     progressPercent: (state) => state.currentBeats / state.totalBeats * 100,
     timeSignature: (state) => [state.beatsPerBar, state.beatsPerWholeNote],
     currentScale: (state) => scaleMap[state.currentKey],
+    barNotes: (state) => state.notes.reduce((acc, note) => {
+      const barIndex = Math.floor(note.start / state.beatsPerBar)
+      if (!acc[barIndex]) acc[barIndex] = []
+      acc[barIndex].push(note)
+      return acc }, {}),
   }
 })
 
