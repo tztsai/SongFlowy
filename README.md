@@ -19,10 +19,10 @@
 ## 技术栈
 
 - 后端：Python Flask
-- 前端：React
-- 音频处理：librosa, Spleeter
-- 乐谱显示：VexFlow
-- AI模型：Whisper (语音识别), YIN (音高检测)
+- 前端：Vue.js
+- 音频处理：librosa, music21, audio-seperator
+- 音高检测：pitch.js
+- 歌词识别：Whisper
 
 ## 安装
 
