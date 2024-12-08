@@ -102,7 +102,7 @@ onUnmounted(() => {
 <style scoped>
 .lyrics-editor {
   height: 100%;
-  min-width: 230px;
+  min-width: 280px;
   display: flex;
   flex-direction: column;
   border-left: 1px solid rgba(255, 255, 255, 0.1);
