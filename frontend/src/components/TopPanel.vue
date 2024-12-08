@@ -14,11 +14,11 @@
         </v-col>
         <v-col cols="1">
           <v-select v-model="currentKey" :items="keySignatures" label="Key" density="compact" hide-details
-            style="min-width: 90px;" @update:modelValue="updateKey" />
+            @update:modelValue="updateKey" />
         </v-col>
         <v-col cols="1">
           <v-select v-model="baseOctave" :items="[0,1,2,3,4,5]" label="Octave" density="compact" hide-details
-            style="min-width: 90px;" @update:modelValue="updateBaseOctave" />
+            @update:modelValue="updateBaseOctave" />
         </v-col>
         <v-col cols="3">
           <v-slider v-model="bpm" :min="30" :max="180" style="max-width: 200px;" density="compact" hide-details>
@@ -37,22 +37,22 @@
             </template>
             <v-list>
               <v-list-item @click="uploadType = 'separate'; triggerFileUpload('vocal')">
-                <v-list-item-title>Upload Vocal Track</v-list-item-title>
+                <v-list-item-title>Upload Main Track</v-list-item-title>
               </v-list-item>
               <v-list-item @click="uploadType = 'separate'; triggerFileUpload('bgm')">
                 <v-list-item-title>Upload Background Music</v-list-item-title>
               </v-list-item>
               <v-divider></v-divider>
               <v-list-item @click="uploadType = 'combined'; triggerFileUpload('combined')">
-                <v-list-item-title>Upload Whole Track</v-list-item-title>
+                <v-list-item-title>AI Audio Separation</v-list-item-title>
               </v-list-item>
             </v-list>
           </v-menu>
-          <input type="file" ref="vocalInput" accept=".mid,.midi,.wav,.mp3" style="display: none"
+          <input type="file" ref="vocalInput" accept=".mid,.midi,.wav,.flac,.mp3" style="display: none"
             @change="handleFileUpload('vocal')">
-          <input type="file" ref="bgmInput" accept=".mid,.midi,.wav,.mp3" style="display: none"
+          <input type="file" ref="bgmInput" accept=".wav,.flac,.mp3" style="display: none"
             @change="handleFileUpload('bgm')">
-          <input type="file" ref="combinedInput" accept=".mid,.midi,.wav,.mp3" style="display: none"
+          <input type="file" ref="combinedInput" accept=".wav,.flac,.mp3" style="display: none"
             @change="handleFileUpload('combined')">
           <div v-if="uploadError" class="text-red">{{ uploadError }}</div>
         </v-col>
@@ -233,7 +233,7 @@ const loadRecentTrack = (track) => {
 }
 
 const formatTrackName = (track) => {
-  return `${track.title} - ${track.bpm} BPM`
+  return `${track.title} (${track.key})`
 }
 
 const formatDate = (dateStr) => {
@@ -265,6 +265,11 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-around;
+}
+
+.v-select {
+  min-width: 90px;
+  min-height: 45px;
 }
 
 .time-display {

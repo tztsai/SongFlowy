@@ -38,10 +38,10 @@ const updateBarValues = () => {
 }
 
 function splitLyrics(value) {
-  if (/[ -~]+/.test(value)) {  // ascii characters
-    return value.split(/[\s,.?!]+/).filter(w => w.length > 0)
-  }
-  return value.split(/[\s,.?!，。？！|]+/).filter(w => w.length > 0)
+  if (/^[\x00-\x7F]+$/.test(value))  // all ascii characters
+    return value.split(/[\s,.?!'";:()]+/).filter(w => w.length > 0)
+  else
+    return value.replace(/[\s,.?!，。？！「」“”；：（）]+/g, '').split('').filter(w => w.length > 0)
 }
 
 function commitBarLyrics(barIndex) {
@@ -72,6 +72,7 @@ function commitBarLyrics(barIndex) {
   }
 
   updateBarValues()
+  musicStore.saveTrack()
 
   // Focus the next bar
   console.log(currentIndex, barNotes.value.length)

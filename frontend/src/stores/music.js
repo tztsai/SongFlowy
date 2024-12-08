@@ -192,10 +192,10 @@ export const useMusicStore = defineStore('music', {
       // Find any overlapping notes with the same name
       for (const exNote of this.notes) {
         if (exNote.noteName === note.noteName) {
-          if (exNote.top >= note.top && exNote.top <= note.bottom) {
+          if (exNote.top > note.top && exNote.top < note.bottom) {
             exNote.top = note.top
             return
-          } else if (exNote.bottom <= note.bottom && exNote.bottom >= note.top) {
+          } else if (exNote.bottom > note.top && exNote.bottom < note.bottom) {
             exNote.bottom = note.bottom
             return
           }
