@@ -156,17 +156,16 @@ export const useMusicStore = defineStore('music', {
       this.currentKey = translateNote(key.replace('m', '')) + (key.includes('m') ? 'm' : '')
       if (!update_notes) return
       const d = allNotes.indexOf(this.currentKey[0]) - c
-      for (const note of this.notes) {  // shift the pitch of all notes
+      for (const note of this.notes)  // shift the pitch of all notes
         note.number += d
-      }
+      this.notes.forEach(note => note.resetColor())
     },
     setOctave(octave, update_notes = false) {
       const d = octave - this.baseOctave
       this.baseOctave = octave
       if (!update_notes) return
-      for (const note of this.notes) {  // shift the pitch of all notes
+      for (const note of this.notes)  // shift the pitch of all notes
         note.number += 12 * d
-      }
     },
     setTimeSignature(numerator, denominator) {
       this.beatsPerBar = numerator
