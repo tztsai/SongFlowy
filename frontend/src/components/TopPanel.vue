@@ -37,7 +37,7 @@
             </template>
             <v-list>
               <v-list-item @click="uploadType = 'separate'; triggerFileUpload('vocal')">
-                <v-list-item-title>Upload Main Track</v-list-item-title>
+                <v-list-item-title>Upload Melody Track</v-list-item-title>
               </v-list-item>
               <v-list-item @click="uploadType = 'separate'; triggerFileUpload('bgm')">
                 <v-list-item-title>Upload Background Music</v-list-item-title>
