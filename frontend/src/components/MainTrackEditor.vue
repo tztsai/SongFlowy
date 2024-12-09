@@ -5,7 +5,7 @@
         {{ isMicActive ? '🎤 Stop' : '🎤 Start' }}
       </button>
       <div v-if="isMicActive" class="pitch-indicator" :style="pitchIndicatorStyle">
-        {{ currentVocalNote || 'No pitch detected' }}
+        {{ (currentVocalPitch?.toFixed(1) || '0') + ' Hz' }}
       </div>
     </div>
     <v-container fluid class="track-container" ref="trackContainer">
@@ -53,7 +53,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch, shallowRef, watchEffect } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { 
   useElementSize, 
   useRafFn, 
@@ -61,8 +61,6 @@ import {
   useEventListener,
   computedAsync,
   computedEager,
-  debouncedWatch,
-  throttledWatch
 } from '@vueuse/core'
 import { useMusicStore, noteColors, allNotes } from '@/stores/music'
 import { Piano } from '@/sound/piano'
@@ -100,8 +98,6 @@ const hitZoneBottom = hitZoneTop - hitZoneHeight
 const hitLineY = (hitZoneTop + hitZoneBottom) / 2
 const silenceThresh = 1500 // ms of silence before considering note released
 const pitchTrailCanvas = ref(null)
-const pitchHistory = ref([])
-const pitchLifeSpan = 3000  // ms
 
 // Track which notes are currently in the hit band
 const activeHitNotes = new Map()
@@ -682,16 +678,6 @@ onUnmounted(() => {
   border-radius: 50%;
   z-index: 4;
   transition: all 0.2s ease-out;
-}
-
-.pitch-trail {
-  position: absolute;
-  bottom: 0px;
-  width: 100%;
-  pointer-events: none;
-  z-index: 3;
-  transform: scaleY(-1);
-  /* Flip the canvas to match note direction */
 }
 
 .controls {
