@@ -65,11 +65,9 @@ export class Note {
     this._duration = duration
   }
   set top(top) {
-    this.height = this.bottom - top
     this.start = (top + this.store.currentScroll) / this.store.beatPixels
   }
   set bottom(bottom) {
-    this.height = bottom - this.top
     this.end = (bottom + this.store.currentScroll) / this.store.beatPixels
   }
   set height(height) {
@@ -80,10 +78,19 @@ export class Note {
     this.noteName = allNotes[number % 12] + ~~(number / 12)
   }
 
+  setTop(top) {
+    top = Math.min(this.bottom - this.store.beatPixels / 32, top)
+    this.height = this.bottom - top
+    this.top = top
+  }
+  setBottom(bottom) {
+    bottom = Math.max(this.top + this.store.beatPixels / 32, bottom)
+    this.height = bottom - this.top
+    this.bottom = bottom
+  }
   resetColor() {
     this.color = noteColors[this.noteName[0]]
   }
-
   toJSON() {
     return {
       id: this.id,
@@ -101,7 +108,7 @@ export const useMusicStore = defineStore('music', {
     bpm: 80,
     beatsPerBar: 4,
     beatsPerWholeNote: 4,
-    beatPixels: 50,
+    beatPixels: 48,
     totalBeats: 180,
     currentBeats: 0,
     isPlaying: false,
@@ -192,11 +199,9 @@ export const useMusicStore = defineStore('music', {
       for (const exNote of this.notes) {
         if (exNote.noteName === note.noteName) {
           if (exNote.top > note.top && exNote.top < note.bottom) {
-            exNote.top = note.top
-            return
+            return exNote.setTop(note.top)
           } else if (exNote.bottom > note.top && exNote.bottom < note.bottom) {
-            exNote.bottom = note.bottom
-            return
+            return exNote.setBottom(note.bottom)
           }
         }
       }

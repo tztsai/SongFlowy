@@ -22,9 +22,12 @@
           </div>
           <div v-for="col in cols" :key="'col' + col" class="track-column" @click="addNote($event, col)">
             <div v-for="{ note, style } in visibleNotes[col-1]" :key="'note' + note.id" class="note"
-              :style="style" @mousedown="startDragging(note, $event)" @dblclick="editNoteLyric(note)"
+              :style="style" @mousedown="startDragging(note, 'move', $event)" @dblclick="editNoteLyric(note)"
               :data-note-id="note.id">
+              <div class="note-edge bottom" @mousedown.stop="startDragging(note, 'bottom', $event)"></div>
               {{ note.lyric || note.noteName }}
+              <div class="note-edge top" @mousedown.stop="startDragging(note, 'top', $event)"></div>
+              <button class="delete-note" @click.stop="musicStore.removeNote(note.id)">×</button>
             </div>
           </div>
         </div>
@@ -165,8 +168,10 @@ const visibleNotes = computedAsync(
 const columnWidth = computed(() => 72 / cols.value)
 
 var draggedNote = null
+var dragMode = null // null, 'move', 'top', 'bottom'
 var dragStartX = 0
-var dragStartY = 0
+var dragStartTop = 0
+var dragStartBottom = 0
 var isDraggingProgress = false
 
 function getScaleNoteForColumn(col) {
@@ -182,28 +187,44 @@ function isNoteInScale(note) {
   return scale ? scale.includes(note[0]) : false
 }
 
-function startDragging(note, event) {
+function startDragging(note, mode, event) {
+  dragMode = mode
   draggedNote = note
   dragStartX = event.clientX
-  dragStartY = draggedNote.start * musicStore.beatPixels + event.clientY
+  dragStartTop = note.top + event.clientY
+  dragStartBottom = note.bottom + event.clientY
   event.stopPropagation()
 }
 
 function stopDragging(event) {
   event.stopPropagation()
   setTimeout(() => {
+    dragMode = null
     draggedNote = null
   }, 10)
 }
 
 function handleDrag(event) {
-  if (!draggedNote) return
+  if (!draggedNote || !dragMode) return
+
   const dx = (event.clientX - dragStartX) / containerWidth.value * cols.value
   if (Math.abs(dx) >= 1) {
     draggedNote.number += ~~(dx)
     dragStartX = event.clientX
   }
-  draggedNote.start = (dragStartY - event.clientY) / musicStore.beatPixels
+
+  switch (dragMode) {
+    case 'move':
+      draggedNote.top = dragStartTop - event.clientY
+      break
+    case 'top':
+      draggedNote.setTop(dragStartTop - event.clientY)
+      break
+    case 'bottom':
+      draggedNote.setBottom(dragStartBottom - event.clientY)
+      break
+  }
+
   event.preventDefault()
 }
 
@@ -612,14 +633,57 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: rgb(32, 32, 32);
+  color: rgb(255, 255, 255);
   font-size: 12px;
   font-weight: bold;
   cursor: move;
   user-select: none;
-  /* transition: all 0.2s; */
   transform: scaleY(-1);
   z-index: 2;
+}
+
+.delete-note {
+  position: absolute;
+  right: -6px;
+  top: -6px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: rgba(255, 42, 42, 0.7);
+  color: white;
+  border: none;
+  cursor: pointer;
+  display: none;
+  padding: 0;
+  font-size: 13px;
+  display: none;
+  line-height: 1;
+  transform: scaleY(-1);
+}
+
+.note:hover .delete-note {
+  display: flex;
+  align-items: last baseline;
+  justify-content: center;
+}
+
+.delete-note:hover {
+  background: rgba(255, 42, 42, 1);
+}
+
+.note-edge {
+  position: absolute;
+  width: 100%;
+  height: 6px;
+  cursor: ns-resize;
+}
+
+.note-edge.top {
+  bottom: -3px;
+}
+
+.note-edge.bottom {
+  top: -3px;
 }
 
 .scale-notes {
