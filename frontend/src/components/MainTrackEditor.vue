@@ -162,7 +162,7 @@ const visibleNotes = computedAsync(
     return res
   },
   [], // Default empty array while computing
-  { throttle: 16 }  // ~60fps updates
+  { throttle: 32 }  // ~60fps updates
 )
 
 const columnWidth = computed(() => 72 / cols.value)
@@ -478,7 +478,7 @@ function handlePitchDetection({ freq, db }) {
   }
 }
 
-const keyboardChars = "qwertyuiop[]1234567890-="
+const keyboardChars = "azsxdfvgbhnj1q2w34r5t6y7"
 
 function keyboard2piano(key) {
   const i = keyboardChars.indexOf(key.toLowerCase())

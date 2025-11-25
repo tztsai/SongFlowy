@@ -49,7 +49,7 @@ npm install
 
 1. 启动后端服务
 ```bash
-python run.py
+python backend/app.py
 ```
 
 2. 启动前端开发服务器
