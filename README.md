@@ -1,6 +1,6 @@
-# Perfect Song Learning
+# SongFlowy
 
-一个帮助学习和分析歌曲的Web应用。
+一个帮助学习、分析和編輯歌曲的Web应用。
 
 ## 功能特点
 
